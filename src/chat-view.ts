@@ -387,13 +387,36 @@ export class ChatView extends ItemView {
 		const collapseContent = collapse.createDiv({ cls: "ai-organizer-collapse-content" });
 		const contentInner = collapseContent.createDiv({ cls: "ai-organizer-collapse-content-inner" });
 
-		const argsStr = JSON.stringify(event.args, null, 2);
-		contentInner.createEl("pre", { text: argsStr, cls: "ai-organizer-tool-call-args" });
+		if (event.toolName === "edit_file") {
+			// For edit_file, show old_text / new_text in dedicated labeled blocks
+			const filePath = typeof event.args.file_path === "string" ? event.args.file_path : "";
+			const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
+			const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
 
-		const resultPreview = event.result.length > 500
-			? event.result.substring(0, 500) + "..."
-			: event.result;
-		contentInner.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
+			if (filePath !== "") {
+				contentInner.createEl("div", { text: `File: ${filePath}`, cls: "ai-organizer-tool-call-label" });
+			}
+
+			contentInner.createEl("div", { text: "Old text:", cls: "ai-organizer-tool-call-label" });
+			contentInner.createEl("pre", {
+				text: oldText === "" ? "(empty — new file)" : oldText,
+				cls: "ai-organizer-tool-call-args",
+			});
+
+			contentInner.createEl("div", { text: "New text:", cls: "ai-organizer-tool-call-label" });
+			contentInner.createEl("pre", {
+				text: newText,
+				cls: "ai-organizer-tool-call-result",
+			});
+		} else {
+			const argsStr = JSON.stringify(event.args, null, 2);
+			contentInner.createEl("pre", { text: argsStr, cls: "ai-organizer-tool-call-args" });
+
+			const resultPreview = event.result.length > 500
+				? event.result.substring(0, 500) + "..."
+				: event.result;
+			contentInner.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
+		}
 	}
 
 	private showApprovalRequest(event: ApprovalRequestEvent): Promise<boolean> {
@@ -410,6 +433,42 @@ export class ChatView extends ItemView {
 			header.createSpan({ text: event.friendlyName, cls: "ai-organizer-approval-name" });
 
 			container.createDiv({ text: event.message, cls: "ai-organizer-approval-message" });
+
+			// Show details for edit_file so the user can review the change
+			if (event.toolName === "edit_file") {
+				const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
+				const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
+
+				const collapse = container.createDiv({ cls: "ai-organizer-collapse ai-organizer-collapse-arrow" });
+				const collapseId = `approval-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+				const checkbox = collapse.createEl("input", {
+					type: "checkbox",
+					attr: { id: collapseId, checked: "" },
+				});
+				checkbox.addClass("ai-organizer-collapse-toggle");
+				checkbox.checked = true;
+				const titleEl = collapse.createEl("label", {
+					cls: "ai-organizer-collapse-title",
+					attr: { for: collapseId },
+					text: "Review changes",
+				});
+				void titleEl;
+
+				const collapseContent = collapse.createDiv({ cls: "ai-organizer-collapse-content" });
+				const contentInner = collapseContent.createDiv({ cls: "ai-organizer-collapse-content-inner" });
+
+				contentInner.createEl("div", { text: "Old text:", cls: "ai-organizer-tool-call-label" });
+				contentInner.createEl("pre", {
+					text: oldText === "" ? "(empty \u2014 new file)" : oldText,
+					cls: "ai-organizer-tool-call-args",
+				});
+
+				contentInner.createEl("div", { text: "New text:", cls: "ai-organizer-tool-call-label" });
+				contentInner.createEl("pre", {
+					text: newText,
+					cls: "ai-organizer-tool-call-result",
+				});
+			}
 
 			const buttonRow = container.createDiv({ cls: "ai-organizer-approval-buttons" });
 

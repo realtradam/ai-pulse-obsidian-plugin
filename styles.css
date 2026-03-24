@@ -356,6 +356,17 @@
 	color: var(--text-muted);
 }
 
+.ai-organizer-tool-call-label {
+	font-weight: 600;
+	color: var(--text-muted);
+	font-size: 0.85em;
+	margin: 6px 0 2px 0;
+}
+
+.ai-organizer-tool-call-label:first-child {
+	margin-top: 0;
+}
+
 /* ===== Markdown in Assistant Bubbles ===== */
 
 .ai-organizer-message.assistant.ai-organizer-markdown {

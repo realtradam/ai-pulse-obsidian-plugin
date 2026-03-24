@@ -139,16 +139,30 @@ async function executeEditFile(app: App, args: Record<string, unknown>): Promise
 	const oldText = typeof args.old_text === "string" ? args.old_text : "";
 	const newText = typeof args.new_text === "string" ? args.new_text : "";
 
-	if (oldText === "") {
-		return "Error: old_text parameter is required and cannot be empty.";
-	}
-
 	const file = app.vault.getAbstractFileByPath(filePath);
 	if (file === null || !(file instanceof TFile)) {
 		return `Error: File not found at path "${filePath}".`;
 	}
 
 	try {
+		if (oldText === "") {
+			// Empty old_text: only allowed when the file is empty (write initial content)
+			let replaced = false;
+			await app.vault.process(file, (data) => {
+				if (data.length !== 0) {
+					return data;
+				}
+				replaced = true;
+				return newText;
+			});
+
+			if (!replaced) {
+				return `Error: old_text is empty but "${filePath}" is not empty. You must read the file first with read_file and provide the exact text you want to replace as old_text.`;
+			}
+
+			return `Successfully wrote content to empty file "${filePath}".`;
+		}
+
 		let replaced = false;
 		await app.vault.process(file, (data) => {
 			if (!data.includes(oldText)) {
@@ -159,7 +173,7 @@ async function executeEditFile(app: App, args: Record<string, unknown>): Promise
 		});
 
 		if (!replaced) {
-			return `Error: The specified old_text was not found in "${filePath}".`;
+			return `Error: The specified old_text was not found in "${filePath}". Make sure you read the file first with read_file and copy the exact text.`;
 		}
 
 		return `Successfully edited "${filePath}".`;
@@ -344,7 +358,15 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			type: "function",
 			function: {
 				name: "edit_file",
-				description: "Edit a file in the Obsidian vault by finding and replacing text. Provide the exact text to find (old_text) and the replacement (new_text). The old_text must match exactly as it appears in the file, including whitespace and newlines. Only the first occurrence is replaced. The file_path must be an exact path as returned by search_files or get_current_note. This action requires user approval.",
+				description: "Edit a file in the Obsidian vault by finding and replacing text. " +
+					"IMPORTANT: You MUST call read_file on the target file BEFORE calling edit_file so you can see its exact current content. " +
+					"Copy the exact text you want to change from the read_file output and use it as old_text. " +
+					"old_text must match a passage in the file exactly (including whitespace and newlines). " +
+					"Only the first occurrence of old_text is replaced with new_text. " +
+					"SPECIAL CASE: If the file is empty (read_file returned no content), set old_text to an empty string to write initial content. " +
+					"If old_text is empty but the file is NOT empty, the edit will be rejected. " +
+					"The file_path must be an exact path from search_files or get_current_note. " +
+					"This action requires user approval.",
 				parameters: {
 					type: "object",
 					required: ["file_path", "old_text", "new_text"],
@@ -355,7 +377,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 						},
 						old_text: {
 							type: "string",
-							description: "The exact text to find in the file. Must match exactly including whitespace.",
+							description: "The exact text to find in the file, copied verbatim from read_file output. Include enough surrounding lines to uniquely identify the location. Preserve all whitespace and newlines exactly. Only set to an empty string when the file itself is empty.",
 						},
 						new_text: {
 							type: "string",
