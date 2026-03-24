@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { Platform, requestUrl } from "obsidian";
 import type { App } from "obsidian";
 import type { OllamaToolDefinition } from "./tools";
 import { findToolByName } from "./tools";
@@ -48,7 +48,13 @@ export async function testConnection(ollamaUrl: string): Promise<string> {
 	} catch (err: unknown) {
 		if (err instanceof Error) {
 			const msg = err.message.toLowerCase();
-			if (msg.includes("net") || msg.includes("fetch") || msg.includes("failed to fetch")) {
+			if (msg.includes("net") || msg.includes("fetch") || msg.includes("failed to fetch") || msg.includes("load failed")) {
+				if (Platform.isMobile) {
+					throw new Error(
+						"Ollama is unreachable. On mobile, use your computer's LAN IP " +
+						"(e.g. http://192.168.1.x:11434) instead of localhost."
+					);
+				}
 				throw new Error("Ollama is unreachable. Is the server running?");
 			}
 			throw err;
@@ -257,17 +263,33 @@ async function* readNdjsonStream(
  * Streams text chunks via onChunk callback. Supports tool-calling agent loop:
  * tool execution rounds are non-streamed, only the final text response streams.
  * Returns the full accumulated response text.
+ *
+ * On mobile platforms, falls back to non-streaming via Obsidian's requestUrl()
+ * because native fetch() cannot reach local network addresses from the mobile
+ * WebView sandbox.
  */
 export async function sendChatMessageStreaming(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, onCreateBubble, abortSignal } = opts;
+	if (Platform.isMobile) {
+		return sendChatMessageStreamingMobile(opts);
+	}
+	return sendChatMessageStreamingDesktop(opts);
+}
+
+/**
+ * Mobile fallback: uses Obsidian's requestUrl() (non-streaming) so the request
+ * goes through the native networking layer and can reach localhost / LAN.
+ */
+async function sendChatMessageStreamingMobile(
+	opts: StreamingChatOptions,
+): Promise<string> {
+	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, onCreateBubble } = opts;
 	const maxIterations = 10;
 	let iterations = 0;
 
 	const workingMessages = messages.map((m) => ({ ...m }));
 
-	// Inject a system prompt when tools are available to guide the model
 	if (tools !== undefined && tools.length > 0) {
 		const systemPrompt: ChatMessage = {
 			role: "system",
@@ -283,7 +305,126 @@ export async function sendChatMessageStreaming(
 	while (iterations < maxIterations) {
 		iterations++;
 
-		// Signal the UI to create a new bubble for this round
+		onCreateBubble();
+
+		const body: Record<string, unknown> = {
+			model,
+			messages: workingMessages,
+			stream: false,
+		};
+
+		if (tools !== undefined && tools.length > 0) {
+			body.tools = tools;
+		}
+
+		try {
+			const response = await requestUrl({
+				url: `${ollamaUrl}/api/chat`,
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+
+			const messageObj = (response.json as Record<string, unknown>).message;
+			if (typeof messageObj !== "object" || messageObj === null) {
+				throw new Error("Unexpected response format: missing message.");
+			}
+
+			const msg = messageObj as Record<string, unknown>;
+			const content = typeof msg.content === "string" ? msg.content : "";
+			const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls as ToolCallResponse[] : [];
+
+			// Deliver the full content as a single chunk to the UI
+			if (content !== "") {
+				onChunk(content);
+			}
+
+			if (toolCalls.length === 0) {
+				return content;
+			}
+
+			const assistantMsg: ChatMessage = {
+				role: "assistant",
+				content,
+				tool_calls: toolCalls,
+			};
+			workingMessages.push(assistantMsg);
+
+			if (app === undefined) {
+				throw new Error("App reference required for tool execution.");
+			}
+
+			for (const tc of toolCalls) {
+				const fnName = tc.function.name;
+				const fnArgs = tc.function.arguments;
+				const toolEntry = findToolByName(fnName);
+
+				let result: string;
+				if (toolEntry === undefined) {
+					result = `Error: Unknown tool "${fnName}".`;
+				} else {
+					result = await toolEntry.execute(app, fnArgs);
+				}
+
+				if (onToolCall !== undefined) {
+					const friendlyName = toolEntry !== undefined ? toolEntry.friendlyName : fnName;
+					const summary = toolEntry !== undefined ? toolEntry.summarize(fnArgs) : `Called ${fnName}`;
+					const resultSummary = toolEntry !== undefined ? toolEntry.summarizeResult(result) : "";
+					onToolCall({ toolName: fnName, friendlyName, summary, resultSummary, args: fnArgs, result });
+				}
+
+				workingMessages.push({
+					role: "tool",
+					tool_name: fnName,
+					content: result,
+				});
+			}
+		} catch (err: unknown) {
+			if (err instanceof Error) {
+				const msg = err.message.toLowerCase();
+				if (msg.includes("net") || msg.includes("fetch") || msg.includes("load") || msg.includes("failed")) {
+					throw new Error(
+						`Cannot reach Ollama at ${ollamaUrl}. ` +
+						"On mobile, Ollama must be accessible over your network (not localhost). " +
+						"Set the Ollama URL to your computer's LAN IP (e.g. http://192.168.1.x:11434)."
+					);
+				}
+				throw new Error(`Chat request failed: ${err.message}`);
+			}
+			throw new Error("Chat request failed: unknown error.");
+		}
+	}
+
+	throw new Error("Tool calling loop exceeded maximum iterations.");
+}
+
+/**
+ * Desktop streaming: uses native fetch() for real token-by-token streaming.
+ */
+async function sendChatMessageStreamingDesktop(
+	opts: StreamingChatOptions,
+): Promise<string> {
+	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, onCreateBubble, abortSignal } = opts;
+	const maxIterations = 10;
+	let iterations = 0;
+
+	const workingMessages = messages.map((m) => ({ ...m }));
+
+	if (tools !== undefined && tools.length > 0) {
+		const systemPrompt: ChatMessage = {
+			role: "system",
+			content:
+				"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
+				"When you use the search_files tool, the results contain exact file paths. " +
+				"You MUST use these exact paths when calling read_file or referencing files. " +
+				"NEVER guess or modify file paths — always use the paths returned by search_files verbatim.",
+		};
+		workingMessages.unshift(systemPrompt);
+	}
+
+	while (iterations < maxIterations) {
+		iterations++;
+
 		onCreateBubble();
 
 		const body: Record<string, unknown> = {
@@ -332,18 +473,15 @@ export async function sendChatMessageStreaming(
 			}
 		} catch (err: unknown) {
 			if (err instanceof DOMException && err.name === "AbortError") {
-				// User cancelled — return whatever we accumulated
 				return content;
 			}
 			throw err;
 		}
 
-		// If no tool calls, we're done
 		if (toolCalls.length === 0) {
 			return content;
 		}
 
-		// Tool calling: append assistant message and execute tools
 		const assistantMsg: ChatMessage = {
 			role: "assistant",
 			content,
@@ -380,9 +518,6 @@ export async function sendChatMessageStreaming(
 				content: result,
 			});
 		}
-
-		// Reset content for next streaming round
-		// (tool call content was intermediate, next round streams the final answer)
 	}
 
 	throw new Error("Tool calling loop exceeded maximum iterations.");

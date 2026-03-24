@@ -10,12 +10,14 @@
 	flex-direction: column;
 	overflow: hidden;
 	min-height: 0;
+	position: relative;
 }
 
 .ai-organizer-messages {
 	flex: 1;
 	overflow-y: auto;
 	padding: 8px;
+	padding-top: 52px;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
@@ -60,6 +62,8 @@
 	color: var(--text-error);
 }
 
+/* ===== Input Row ===== */
+
 .ai-organizer-input-row {
 	display: flex;
 	flex-direction: row;
@@ -84,51 +88,126 @@
 	outline: none;
 }
 
-.ai-organizer-input-buttons {
+/* ===== FAB / Speed Dial ===== */
+
+.ai-organizer-fab {
+	position: absolute;
+	top: 8px;
+	right: 12px;
+	z-index: 10;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	align-items: flex-end;
+	gap: 8px;
+	pointer-events: none;
 }
 
-.ai-organizer-settings-btn {
+.ai-organizer-fab > * {
+	pointer-events: auto;
+}
+
+/* Main FAB trigger */
+.ai-organizer-fab-trigger {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	border: none;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	padding: 4px;
-	background: transparent;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	color: var(--text-muted);
-	cursor: pointer;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+	transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+		background-color 0.2s;
 }
 
-.ai-organizer-settings-btn:hover {
+.ai-organizer-fab-trigger:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+.ai-organizer-fab-trigger svg {
+	width: 18px;
+	height: 18px;
+}
+
+/* Rotate trigger when FAB is open */
+.ai-organizer-fab:focus-within > .ai-organizer-fab-trigger {
+	transform: rotate(90deg);
+}
+
+/* FAB action items (hidden by default) */
+.ai-organizer-fab-action {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	visibility: hidden;
+	opacity: 0;
+	transform: scale(0.8);
+	transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+		visibility 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+		transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Staggered delays */
+.ai-organizer-fab-action:nth-child(2) {
+	transition-delay: 30ms;
+}
+
+.ai-organizer-fab-action:nth-child(3) {
+	transition-delay: 60ms;
+}
+
+.ai-organizer-fab-action:nth-child(4) {
+	transition-delay: 90ms;
+}
+
+/* Reveal actions on focus-within */
+.ai-organizer-fab:focus-within > .ai-organizer-fab-action {
+	visibility: visible;
+	opacity: 1;
+	transform: scale(1);
+}
+
+/* FAB action label */
+.ai-organizer-fab-label {
+	padding: 3px 8px;
+	border-radius: 4px;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: 0.8em;
+	white-space: nowrap;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* FAB action button (circle) */
+.ai-organizer-fab-btn {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-secondary);
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+	transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.ai-organizer-fab-btn:hover {
 	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
 }
 
-
-.ai-organizer-tools-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 4px;
-	background: transparent;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	color: var(--text-muted);
-	cursor: pointer;
+.ai-organizer-fab-btn svg {
+	width: 18px;
+	height: 18px;
 }
 
-.ai-organizer-tools-btn:hover {
-	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
-}
-
-.ai-organizer-tools-btn.ai-organizer-tools-active {
-	color: var(--interactive-accent);
-	border-color: var(--interactive-accent);
-}
+/* ===== Tool Call Bubbles ===== */
 
 .ai-organizer-tool-call {
 	align-self: flex-start;
@@ -175,19 +254,85 @@
 	font-size: 0.9em;
 }
 
-.ai-organizer-tool-call-details {
+/* ===== DaisyUI-inspired Collapse ===== */
+
+.ai-organizer-collapse {
+	display: grid;
+	position: relative;
+	overflow: hidden;
+	border-radius: 6px;
+	width: 100%;
+	grid-template-rows: max-content 0fr;
+	grid-template-columns: minmax(0, 1fr);
+	transition: grid-template-rows 0.2s ease-out;
 	margin-top: 4px;
 }
 
-.ai-organizer-tool-call-details > summary {
+.ai-organizer-collapse-toggle {
+	position: absolute;
+	opacity: 0;
+	width: 0;
+	height: 0;
+	pointer-events: none;
+}
+
+.ai-organizer-collapse-title {
+	grid-column-start: 1;
+	grid-row-start: 1;
+	position: relative;
+	width: 100%;
+	padding: 4px 28px 4px 0;
 	cursor: pointer;
 	color: var(--text-muted);
 	font-size: 0.9em;
 	user-select: none;
+	transition: color 0.15s;
 }
 
-.ai-organizer-tool-call-details > summary:hover {
+.ai-organizer-collapse-title:hover {
 	color: var(--text-normal);
+}
+
+/* Collapse arrow indicator */
+.ai-organizer-collapse-arrow > .ai-organizer-collapse-title::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	right: 8px;
+	width: 0.45em;
+	height: 0.45em;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: translateY(-75%) rotate(45deg);
+	transform-origin: 75% 75%;
+	transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	pointer-events: none;
+}
+
+/* Arrow rotates when open */
+.ai-organizer-collapse-toggle:checked ~ .ai-organizer-collapse-title::after {
+	transform: translateY(-25%) rotate(225deg);
+}
+
+/* Expand grid when checked */
+.ai-organizer-collapse:has(.ai-organizer-collapse-toggle:checked) {
+	grid-template-rows: max-content 1fr;
+}
+
+.ai-organizer-collapse-content {
+	grid-column-start: 1;
+	grid-row-start: 2;
+	min-height: 0;
+	overflow: hidden;
+	transition: min-height 0.2s ease-out;
+}
+
+.ai-organizer-collapse-toggle:checked ~ .ai-organizer-collapse-content {
+	min-height: fit-content;
+}
+
+.ai-organizer-collapse-content-inner {
+	padding: 4px 0 6px 0;
 }
 
 .ai-organizer-tool-call-args,
@@ -207,12 +352,13 @@
 	color: var(--text-muted);
 }
 
+/* ===== Misc ===== */
+
 .ai-organizer-tool-modal-desc {
 	color: var(--text-muted);
 	font-size: 0.9em;
 	margin-bottom: 8px;
 }
-
 
 .ai-organizer-stop-btn {
 	background-color: var(--text-error) !important;

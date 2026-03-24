@@ -14,7 +14,7 @@ export class SettingsModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass("ai-organizer-settings-modal");
 
-		this.setTitle("AI Organizer Settings");
+		this.setTitle("AI Settings");
 
 		// Ollama URL setting
 		new Setting(contentEl)

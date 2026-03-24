@@ -45,26 +45,36 @@ export class ChatView extends ItemView {
 		const messagesArea = contentEl.createDiv({ cls: "ai-organizer-messages-area" });
 		this.messageContainer = messagesArea.createDiv({ cls: "ai-organizer-messages" });
 
-		const inputRow = messagesArea.createDiv({ cls: "ai-organizer-input-row" });
-		this.textarea = inputRow.createEl("textarea", {
-			attr: { placeholder: "Type a message...", rows: "2" },
+		// --- FAB Speed Dial ---
+		const fab = messagesArea.createDiv({ cls: "ai-organizer-fab" });
+
+		// Main FAB trigger button (first child)
+		const fabTrigger = fab.createEl("button", {
+			cls: "ai-organizer-fab-trigger",
+			attr: { "aria-label": "Actions", tabindex: "0" },
 		});
+		setIcon(fabTrigger, "settings");
 
-		const buttonGroup = inputRow.createDiv({ cls: "ai-organizer-input-buttons" });
-
-		// Settings button
-		const settingsBtn = buttonGroup.createEl("button", {
-			cls: "ai-organizer-settings-btn",
+		// Speed dial actions (revealed on focus-within)
+		const settingsAction = fab.createDiv({ cls: "ai-organizer-fab-action" });
+		const settingsLabel = settingsAction.createSpan({ cls: "ai-organizer-fab-label", text: "AI Settings" });
+		void settingsLabel;
+		const settingsBtn = settingsAction.createEl("button", {
+			cls: "ai-organizer-fab-btn",
 			attr: { "aria-label": "Settings" },
 		});
-		setIcon(settingsBtn, "settings");
+		setIcon(settingsBtn, "sliders-horizontal");
 		settingsBtn.addEventListener("click", () => {
 			new SettingsModal(this.plugin).open();
+			// Blur to close the FAB
+			(document.activeElement as HTMLElement)?.blur();
 		});
 
-		// Tools button
-		this.toolsButton = buttonGroup.createEl("button", {
-			cls: "ai-organizer-tools-btn",
+		const toolsAction = fab.createDiv({ cls: "ai-organizer-fab-action" });
+		const toolsLabel = toolsAction.createSpan({ cls: "ai-organizer-fab-label", text: "Tools" });
+		void toolsLabel;
+		this.toolsButton = toolsAction.createEl("button", {
+			cls: "ai-organizer-fab-btn",
 			attr: { "aria-label": "Tools" },
 		});
 		setIcon(this.toolsButton, "wrench");
@@ -75,10 +85,32 @@ export class ChatView extends ItemView {
 				this.updateToolsButtonState();
 			};
 			modal.open();
+			(document.activeElement as HTMLElement)?.blur();
+		});
+
+		const clearAction = fab.createDiv({ cls: "ai-organizer-fab-action" });
+		const clearLabel = clearAction.createSpan({ cls: "ai-organizer-fab-label", text: "Clear Chat" });
+		void clearLabel;
+		const clearBtn = clearAction.createEl("button", {
+			cls: "ai-organizer-fab-btn",
+			attr: { "aria-label": "Clear Chat" },
+		});
+		setIcon(clearBtn, "trash-2");
+		clearBtn.addEventListener("click", () => {
+			this.messages = [];
+			if (this.messageContainer !== null) {
+				this.messageContainer.empty();
+			}
+			(document.activeElement as HTMLElement)?.blur();
+		});
+
+		const inputRow = messagesArea.createDiv({ cls: "ai-organizer-input-row" });
+		this.textarea = inputRow.createEl("textarea", {
+			attr: { placeholder: "Type a message...", rows: "2" },
 		});
 
 		// Send button
-		this.sendButton = buttonGroup.createEl("button", { text: "Send" });
+		this.sendButton = inputRow.createEl("button", { text: "Send" });
 
 		this.textarea.addEventListener("keydown", (e: KeyboardEvent) => {
 			if (e.key === "Enter" && !e.shiftKey) {
@@ -290,16 +322,31 @@ export class ChatView extends ItemView {
 		container.createDiv({ text: event.summary, cls: "ai-organizer-tool-call-summary" });
 		container.createDiv({ text: event.resultSummary, cls: "ai-organizer-tool-call-result-summary" });
 
-		const details = container.createEl("details", { cls: "ai-organizer-tool-call-details" });
-		details.createEl("summary", { text: "Details" });
+		// DaisyUI-style collapse with checkbox
+		const collapse = container.createDiv({ cls: "ai-organizer-collapse ai-organizer-collapse-arrow" });
+		const collapseId = `tool-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+		const checkbox = collapse.createEl("input", {
+			type: "checkbox",
+			attr: { id: collapseId },
+		});
+		checkbox.addClass("ai-organizer-collapse-toggle");
+		const titleEl = collapse.createEl("label", {
+			cls: "ai-organizer-collapse-title",
+			attr: { for: collapseId },
+			text: "Details",
+		});
+		void titleEl; // suppress unused warning
+
+		const collapseContent = collapse.createDiv({ cls: "ai-organizer-collapse-content" });
+		const contentInner = collapseContent.createDiv({ cls: "ai-organizer-collapse-content-inner" });
 
 		const argsStr = JSON.stringify(event.args, null, 2);
-		details.createEl("pre", { text: argsStr, cls: "ai-organizer-tool-call-args" });
+		contentInner.createEl("pre", { text: argsStr, cls: "ai-organizer-tool-call-args" });
 
 		const resultPreview = event.result.length > 500
 			? event.result.substring(0, 500) + "..."
 			: event.result;
-		details.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
+		contentInner.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
 	}
 
 	private scrollToBottom(): void {
