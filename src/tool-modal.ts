@@ -23,6 +23,9 @@ export class ToolModal extends Modal {
 		});
 
 		for (const tool of TOOL_REGISTRY) {
+			// Batch tools auto-enable with their parent — no separate toggle
+			if (tool.batchOf !== undefined) continue;
+
 			new Setting(contentEl)
 				.setName(tool.label)
 				.setDesc(tool.description)

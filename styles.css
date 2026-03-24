@@ -39,6 +39,16 @@
 	color: var(--text-on-accent);
 }
 
+.ai-pulse-message.user ::selection {
+	background-color: rgba(255, 255, 255, 0.35);
+	color: inherit;
+}
+
+.ai-pulse-message.user::selection {
+	background-color: rgba(255, 255, 255, 0.35);
+	color: inherit;
+}
+
 .ai-pulse-message.assistant {
 	align-self: flex-start;
 	background-color: var(--background-primary);
@@ -543,6 +553,7 @@
 	margin: 4px 0 8px 0;
 	color: var(--text-normal);
 	font-size: 0.9em;
+	white-space: pre-wrap;
 }
 
 .ai-pulse-approval-buttons {
@@ -643,4 +654,37 @@
 .ai-pulse-model-badge-empty {
 	color: var(--text-muted);
 	font-style: italic;
+}
+
+/* ===== Batch Tool Approval Details ===== */
+
+.ai-pulse-batch-list {
+	margin: 4px 0;
+	padding-left: 1.4em;
+	list-style-type: disc;
+	font-size: 0.9em;
+	color: var(--text-normal);
+}
+
+.ai-pulse-batch-list li {
+	margin: 2px 0;
+	word-break: break-all;
+}
+
+.ai-pulse-batch-path {
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+}
+
+.ai-pulse-batch-file-header {
+	margin-top: 8px !important;
+	padding-bottom: 2px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 0.9em !important;
+	color: var(--text-normal) !important;
+	font-family: var(--font-monospace);
+}
+
+.ai-pulse-batch-file-header:first-child {
+	margin-top: 0 !important;
 }

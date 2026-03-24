@@ -26,6 +26,8 @@ export interface ToolEntry {
 	description: string;
 	friendlyName: string;
 	requiresApproval: boolean;
+	/** If set, this batch tool is auto-enabled when the named base tool is enabled. */
+	batchOf?: string;
 	approvalMessage?: (args: Record<string, unknown>) => string;
 	summarize: (args: Record<string, unknown>) => string;
 	summarizeResult: (result: string) => string;
@@ -403,6 +405,211 @@ async function executeSetFrontmatter(app: App, args: Record<string, unknown>): P
 		const msg = err instanceof Error ? err.message : "Unknown error";
 		return `Error updating frontmatter: ${msg}`;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Batch tool execute functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: parse an array-typed argument that may arrive as a JSON string.
+ */
+function parseArrayArg(value: unknown): unknown[] | null {
+	if (Array.isArray(value)) return value;
+	if (typeof value === "string") {
+		try {
+			const parsed = JSON.parse(value) as unknown;
+			if (Array.isArray(parsed)) return parsed;
+		} catch { /* fall through */ }
+	}
+	return null;
+}
+
+/**
+ * Execute the "batch_search_files" tool.
+ * Runs multiple search queries and returns combined results.
+ */
+async function executeBatchSearchFiles(app: App, args: Record<string, unknown>): Promise<string> {
+	const queries = parseArrayArg(args.queries);
+	if (queries === null || queries.length === 0) {
+		return "Error: queries parameter must be a non-empty array of strings.";
+	}
+
+	const results: string[] = [];
+	for (let i = 0; i < queries.length; i++) {
+		const q = queries[i];
+		const query = typeof q === "string" ? q : "";
+		const result = await executeSearchFiles(app, { query });
+		results.push(`--- Query ${i + 1}: "${query}" ---\n${result}`);
+	}
+
+	return results.join("\n\n");
+}
+
+/**
+ * Execute the "batch_grep_search" tool.
+ * Runs multiple content searches and returns combined results.
+ */
+async function executeBatchGrepSearch(app: App, args: Record<string, unknown>): Promise<string> {
+	const queries = parseArrayArg(args.queries);
+	if (queries === null || queries.length === 0) {
+		return "Error: queries parameter must be a non-empty array of search query objects.";
+	}
+
+	const results: string[] = [];
+	for (let i = 0; i < queries.length; i++) {
+		const q = queries[i];
+		if (typeof q !== "object" || q === null) {
+			results.push(`--- Query ${i + 1} ---\nError: each query must be an object with a "query" field.`);
+			continue;
+		}
+		const queryObj = q as Record<string, unknown>;
+		const result = await executeGrepSearch(app, queryObj);
+		const queryText = typeof queryObj.query === "string" ? queryObj.query : "";
+		const filePattern = typeof queryObj.file_pattern === "string" ? ` (in "${queryObj.file_pattern}")` : "";
+		results.push(`--- Query ${i + 1}: "${queryText}"${filePattern} ---\n${result}`);
+	}
+
+	return results.join("\n\n");
+}
+
+/**
+ * Execute the "batch_delete_file" tool.
+ * Deletes multiple files, continuing on failure and reporting per-file results.
+ */
+async function executeBatchDeleteFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePaths = parseArrayArg(args.file_paths);
+	if (filePaths === null || filePaths.length === 0) {
+		return "Error: file_paths parameter must be a non-empty array of strings.";
+	}
+
+	const results: string[] = [];
+	let successes = 0;
+	let failures = 0;
+
+	for (const fp of filePaths) {
+		const filePath = typeof fp === "string" ? fp : "";
+		const result = await executeDeleteFile(app, { file_path: filePath });
+		if (result.startsWith("Error")) {
+			failures++;
+		} else {
+			successes++;
+		}
+		results.push(`${filePath}: ${result}`);
+	}
+
+	const summary = `Batch delete complete: ${successes} succeeded, ${failures} failed.`;
+	return `${summary}\n\n${results.join("\n")}`;
+}
+
+/**
+ * Execute the "batch_move_file" tool.
+ * Moves/renames multiple files, continuing on failure.
+ */
+async function executeBatchMoveFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const operations = parseArrayArg(args.operations);
+	if (operations === null || operations.length === 0) {
+		return "Error: operations parameter must be a non-empty array of {file_path, new_path} objects.";
+	}
+
+	const results: string[] = [];
+	let successes = 0;
+	let failures = 0;
+
+	for (const op of operations) {
+		if (typeof op !== "object" || op === null) {
+			results.push("(invalid entry): Error: each operation must be an object with file_path and new_path.");
+			failures++;
+			continue;
+		}
+		const opObj = op as Record<string, unknown>;
+		const filePath = typeof opObj.file_path === "string" ? opObj.file_path : "";
+		const newPath = typeof opObj.new_path === "string" ? opObj.new_path : "";
+		const result = await executeMoveFile(app, { file_path: filePath, new_path: newPath });
+		if (result.startsWith("Error")) {
+			failures++;
+		} else {
+			successes++;
+		}
+		results.push(`${filePath} → ${newPath}: ${result}`);
+	}
+
+	const summary = `Batch move complete: ${successes} succeeded, ${failures} failed.`;
+	return `${summary}\n\n${results.join("\n")}`;
+}
+
+/**
+ * Execute the "batch_set_frontmatter" tool.
+ * Sets frontmatter on multiple files, continuing on failure.
+ */
+async function executeBatchSetFrontmatter(app: App, args: Record<string, unknown>): Promise<string> {
+	const operations = parseArrayArg(args.operations);
+	if (operations === null || operations.length === 0) {
+		return "Error: operations parameter must be a non-empty array of {file_path, properties} objects.";
+	}
+
+	const results: string[] = [];
+	let successes = 0;
+	let failures = 0;
+
+	for (const op of operations) {
+		if (typeof op !== "object" || op === null) {
+			results.push("(invalid entry): Error: each operation must be an object with file_path and properties.");
+			failures++;
+			continue;
+		}
+		const opObj = op as Record<string, unknown>;
+		const filePath = typeof opObj.file_path === "string" ? opObj.file_path : "";
+		const result = await executeSetFrontmatter(app, { file_path: filePath, properties: opObj.properties });
+		if (result.startsWith("Error")) {
+			failures++;
+		} else {
+			successes++;
+		}
+		results.push(`${filePath}: ${result}`);
+	}
+
+	const summary = `Batch frontmatter update complete: ${successes} succeeded, ${failures} failed.`;
+	return `${summary}\n\n${results.join("\n")}`;
+}
+
+/**
+ * Execute the "batch_edit_file" tool.
+ * Performs multiple file edits, continuing on failure.
+ */
+async function executeBatchEditFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const operations = parseArrayArg(args.operations);
+	if (operations === null || operations.length === 0) {
+		return "Error: operations parameter must be a non-empty array of {file_path, old_text, new_text} objects.";
+	}
+
+	const results: string[] = [];
+	let successes = 0;
+	let failures = 0;
+
+	for (const op of operations) {
+		if (typeof op !== "object" || op === null) {
+			results.push("(invalid entry): Error: each operation must be an object with file_path, old_text, and new_text.");
+			failures++;
+			continue;
+		}
+		const opObj = op as Record<string, unknown>;
+		const filePath = typeof opObj.file_path === "string" ? opObj.file_path : "";
+		const result = await executeEditFile(app, {
+			file_path: filePath,
+			old_text: opObj.old_text,
+			new_text: opObj.new_text,
+		});
+		if (result.startsWith("Error")) {
+			failures++;
+		} else {
+			successes++;
+		}
+		results.push(`${filePath}: ${result}`);
+	}
+
+	const summary = `Batch edit complete: ${successes} succeeded, ${failures} failed.`;
+	return `${summary}\n\n${results.join("\n")}`;
 }
 
 /**
@@ -810,6 +1017,290 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 		},
 		execute: executeSetFrontmatter,
 	},
+	// --- Batch tools ---
+	{
+		id: "batch_search_files",
+		label: "Batch Search File Names",
+		description: "Run multiple file-name searches in one call.",
+		friendlyName: "Batch Search Files",
+		requiresApproval: false,
+		batchOf: "search_files",
+		summarize: (args) => {
+			const queries = parseArrayArg(args.queries);
+			const count = queries !== null ? queries.length : 0;
+			return `${count} search quer${count === 1 ? "y" : "ies"}`;
+		},
+		summarizeResult: (result) => {
+			const sections = result.split("--- Query").length - 1;
+			return `${sections} search${sections === 1 ? "" : "es"} completed`;
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "batch_search_files",
+				description: "Run multiple file-name searches in a single call. Each query searches vault file names/paths independently. Use this when you need to search for several different terms at once instead of calling search_files repeatedly.",
+				parameters: {
+					type: "object",
+					required: ["queries"],
+					properties: {
+						queries: {
+							type: "string",
+							description: 'A JSON array of search query strings. Example: ["meeting notes", "project plan", "2024"]',
+						},
+					},
+				},
+			},
+		},
+		execute: executeBatchSearchFiles,
+	},
+	{
+		id: "batch_grep_search",
+		label: "Batch Search File Contents",
+		description: "Run multiple content searches in one call.",
+		friendlyName: "Batch Search Contents",
+		requiresApproval: false,
+		batchOf: "grep_search",
+		summarize: (args) => {
+			const queries = parseArrayArg(args.queries);
+			const count = queries !== null ? queries.length : 0;
+			return `${count} content search${count === 1 ? "" : "es"}`;
+		},
+		summarizeResult: (result) => {
+			const sections = result.split("--- Query").length - 1;
+			return `${sections} search${sections === 1 ? "" : "es"} completed`;
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "batch_grep_search",
+				description: "Run multiple content searches across vault markdown files in a single call. Each query searches independently. Use this when you need to search for several different text patterns at once instead of calling grep_search repeatedly.",
+				parameters: {
+					type: "object",
+					required: ["queries"],
+					properties: {
+						queries: {
+							type: "string",
+							description: 'A JSON array of query objects. Each object must have a "query" field and optionally a "file_pattern" field. Example: [{"query": "TODO", "file_pattern": "projects/"}, {"query": "meeting agenda"}]',
+						},
+					},
+				},
+			},
+		},
+		execute: executeBatchGrepSearch,
+	},
+	{
+		id: "batch_delete_file",
+		label: "Batch Delete Files",
+		description: "Delete multiple files at once (requires approval).",
+		friendlyName: "Batch Delete Files",
+		requiresApproval: true,
+		batchOf: "delete_file",
+		approvalMessage: (args) => {
+			const filePaths = parseArrayArg(args.file_paths);
+			if (filePaths === null || filePaths.length === 0) return "Delete files?";
+			const list = filePaths.map((fp) => `  • ${typeof fp === "string" ? fp : "(invalid)"}`);
+			return `Delete ${filePaths.length} file${filePaths.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
+		},
+		summarize: (args) => {
+			const filePaths = parseArrayArg(args.file_paths);
+			const count = filePaths !== null ? filePaths.length : 0;
+			return `${count} file${count === 1 ? "" : "s"}`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
+			if (result.includes("declined")) return "Declined by user";
+			const match = result.match(/(\d+) succeeded, (\d+) failed/);
+			if (match !== null) return `${match[1]} deleted, ${match[2]} failed`;
+			return "Batch delete complete";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "batch_delete_file",
+				description: "Delete multiple files from the Obsidian vault in a single call. Files are moved to the system trash. If some files fail (e.g. not found), the operation continues with the remaining files and reports per-file results. All file paths must be exact paths as returned by search_files. This action requires user approval for the entire batch.",
+				parameters: {
+					type: "object",
+					required: ["file_paths"],
+					properties: {
+						file_paths: {
+							type: "string",
+							description: 'A JSON array of vault-relative file paths to delete. Example: ["folder/note1.md", "folder/note2.md"]',
+						},
+					},
+				},
+			},
+		},
+		execute: executeBatchDeleteFile,
+	},
+	{
+		id: "batch_move_file",
+		label: "Batch Move/Rename Files",
+		description: "Move or rename multiple files at once (requires approval).",
+		friendlyName: "Batch Move Files",
+		requiresApproval: true,
+		batchOf: "move_file",
+		approvalMessage: (args) => {
+			const operations = parseArrayArg(args.operations);
+			if (operations === null || operations.length === 0) return "Move files?";
+			const list = operations.map((op) => {
+				if (typeof op !== "object" || op === null) return "  • (invalid entry)";
+				const o = op as Record<string, unknown>;
+				const from = typeof o.file_path === "string" ? o.file_path : "?";
+				const to = typeof o.new_path === "string" ? o.new_path : "?";
+				return `  • ${from} → ${to}`;
+			});
+			return `Move ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
+		},
+		summarize: (args) => {
+			const operations = parseArrayArg(args.operations);
+			const count = operations !== null ? operations.length : 0;
+			return `${count} file${count === 1 ? "" : "s"}`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
+			if (result.includes("declined")) return "Declined by user";
+			const match = result.match(/(\d+) succeeded, (\d+) failed/);
+			if (match !== null) return `${match[1]} moved, ${match[2]} failed`;
+			return "Batch move complete";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "batch_move_file",
+				description: "Move or rename multiple files in the Obsidian vault in a single call. All internal links are automatically updated for each file. If some operations fail, the rest continue and per-file results are reported. Target folders are created automatically. All file paths must be exact paths as returned by search_files. This action requires user approval for the entire batch.",
+				parameters: {
+					type: "object",
+					required: ["operations"],
+					properties: {
+						operations: {
+							type: "string",
+							description: 'A JSON array of move operations. Each object must have "file_path" (current path) and "new_path" (destination). Example: [{"file_path": "old/note.md", "new_path": "new/note.md"}, {"file_path": "a.md", "new_path": "archive/a.md"}]',
+						},
+					},
+				},
+			},
+		},
+		execute: executeBatchMoveFile,
+	},
+	{
+		id: "batch_set_frontmatter",
+		label: "Batch Set Frontmatter",
+		description: "Update frontmatter on multiple files at once (requires approval).",
+		friendlyName: "Batch Set Frontmatter",
+		requiresApproval: true,
+		batchOf: "set_frontmatter",
+		approvalMessage: (args) => {
+			const operations = parseArrayArg(args.operations);
+			if (operations === null || operations.length === 0) return "Update frontmatter?";
+			const list = operations.map((op) => {
+				if (typeof op !== "object" || op === null) return "  • (invalid entry)";
+				const o = op as Record<string, unknown>;
+				const fp = typeof o.file_path === "string" ? o.file_path : "?";
+				let propsStr = "";
+				if (typeof o.properties === "object" && o.properties !== null) {
+					propsStr = Object.keys(o.properties as Record<string, unknown>).join(", ");
+				} else if (typeof o.properties === "string") {
+					try {
+						const parsed = JSON.parse(o.properties) as Record<string, unknown>;
+						propsStr = Object.keys(parsed).join(", ");
+					} catch { propsStr = "(properties)"; }
+				}
+				return `  • ${fp}: ${propsStr}`;
+			});
+			return `Update frontmatter on ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
+		},
+		summarize: (args) => {
+			const operations = parseArrayArg(args.operations);
+			const count = operations !== null ? operations.length : 0;
+			return `${count} file${count === 1 ? "" : "s"}`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
+			if (result.includes("declined")) return "Declined by user";
+			const match = result.match(/(\d+) succeeded, (\d+) failed/);
+			if (match !== null) return `${match[1]} updated, ${match[2]} failed`;
+			return "Batch frontmatter update complete";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "batch_set_frontmatter",
+				description: "Update YAML frontmatter properties on multiple files in a single call. " +
+					"Each operation specifies a file and the properties to set. " +
+					"Existing properties not mentioned are left unchanged. Set a value to null to remove it. " +
+					"If some operations fail, the rest continue and per-file results are reported. " +
+					"Use this instead of calling set_frontmatter repeatedly when updating multiple files. " +
+					"RECOMMENDED: Read files first to see existing frontmatter before updating. " +
+					"This action requires user approval for the entire batch.",
+				parameters: {
+					type: "object",
+					required: ["operations"],
+					properties: {
+						operations: {
+							type: "string",
+							description: 'A JSON array of frontmatter operations. Each object must have "file_path" and "properties" (a JSON object of key-value pairs). Example: [{"file_path": "note1.md", "properties": {"tags": ["ai"], "status": "done"}}, {"file_path": "note2.md", "properties": {"tags": ["research"]}}]',
+						},
+					},
+				},
+			},
+		},
+		execute: executeBatchSetFrontmatter,
+	},
+	{
+		id: "batch_edit_file",
+		label: "Batch Edit Files",
+		description: "Edit multiple files at once (requires approval).",
+		friendlyName: "Batch Edit Files",
+		requiresApproval: true,
+		batchOf: "edit_file",
+		approvalMessage: (args) => {
+			const operations = parseArrayArg(args.operations);
+			if (operations === null || operations.length === 0) return "Edit files?";
+			const list = operations.map((op) => {
+				if (typeof op !== "object" || op === null) return "  • (invalid entry)";
+				const o = op as Record<string, unknown>;
+				const fp = typeof o.file_path === "string" ? o.file_path : "?";
+				return `  • ${fp}`;
+			});
+			return `Edit ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
+		},
+		summarize: (args) => {
+			const operations = parseArrayArg(args.operations);
+			const count = operations !== null ? operations.length : 0;
+			return `${count} file${count === 1 ? "" : "s"}`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
+			if (result.includes("declined")) return "Declined by user";
+			const match = result.match(/(\d+) succeeded, (\d+) failed/);
+			if (match !== null) return `${match[1]} edited, ${match[2]} failed`;
+			return "Batch edit complete";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "batch_edit_file",
+				description: "Edit multiple files in the Obsidian vault in a single call. " +
+					"Each operation performs a find-and-replace on one file. " +
+					"IMPORTANT: You MUST call read_file on each target file BEFORE using this tool. " +
+					"Copy the exact text from read_file output for each old_text. " +
+					"If some operations fail, the rest continue and per-file results are reported. " +
+					"Use this instead of calling edit_file repeatedly when making changes across multiple files. " +
+					"This action requires user approval for the entire batch.",
+				parameters: {
+					type: "object",
+					required: ["operations"],
+					properties: {
+						operations: {
+							type: "string",
+							description: 'A JSON array of edit operations. Each object must have "file_path", "old_text", and "new_text". Example: [{"file_path": "note1.md", "old_text": "old content", "new_text": "new content"}, {"file_path": "note2.md", "old_text": "foo", "new_text": "bar"}]',
+						},
+					},
+				},
+			},
+		},
+		execute: executeBatchEditFile,
+	},
 ];
 
 /**
@@ -818,6 +1309,8 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 export function getDefaultToolStates(): Record<string, boolean> {
 	const states: Record<string, boolean> = {};
 	for (const tool of TOOL_REGISTRY) {
+		// Batch tools inherit from their parent — no separate toggle
+		if (tool.batchOf !== undefined) continue;
 		states[tool.id] = false;
 	}
 	return states;

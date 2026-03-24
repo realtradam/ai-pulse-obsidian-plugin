@@ -162,7 +162,12 @@ export class ChatView extends ItemView {
 	private getEnabledTools(): OllamaToolDefinition[] {
 		const tools: OllamaToolDefinition[] = [];
 		for (const tool of TOOL_REGISTRY) {
-			if (this.plugin.settings.enabledTools[tool.id] === true) {
+			if (tool.batchOf !== undefined) {
+				// Batch tool: include if the parent tool is enabled
+				if (this.plugin.settings.enabledTools[tool.batchOf] === true) {
+					tools.push(tool.definition);
+				}
+			} else if (this.plugin.settings.enabledTools[tool.id] === true) {
 				tools.push(tool.definition);
 			}
 		}
@@ -497,8 +502,12 @@ export class ChatView extends ItemView {
 
 			container.createDiv({ text: event.message, cls: "ai-pulse-approval-message" });
 
-			// Show details for edit_file so the user can review the change
-			if (event.toolName === "edit_file" || event.toolName === "create_file" || event.toolName === "set_frontmatter") {
+			// Show details for review-worthy tools
+			const detailTools = [
+				"edit_file", "create_file", "set_frontmatter",
+				"batch_delete_file", "batch_move_file", "batch_set_frontmatter", "batch_edit_file",
+			];
+			if (detailTools.includes(event.toolName)) {
 				const collapse = container.createDiv({ cls: "ai-pulse-collapse ai-pulse-collapse-arrow" });
 				const collapseId = `approval-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 				const checkbox = collapse.createEl("input", {
@@ -507,12 +516,15 @@ export class ChatView extends ItemView {
 				});
 				checkbox.addClass("ai-pulse-collapse-toggle");
 				checkbox.checked = true;
+
+				const collapseTitleText = event.toolName === "create_file" ? "Review content"
+					: event.toolName === "set_frontmatter" ? "Review properties"
+					: event.toolName.startsWith("batch_") ? "Review all operations"
+					: "Review changes";
 				const titleEl = collapse.createEl("label", {
 					cls: "ai-pulse-collapse-title",
 					attr: { for: collapseId },
-					text: event.toolName === "create_file" ? "Review content"
-						: event.toolName === "set_frontmatter" ? "Review properties"
-						: "Review changes",
+					text: collapseTitleText,
 				});
 				void titleEl;
 
@@ -545,8 +557,7 @@ export class ChatView extends ItemView {
 						text: propsStr,
 						cls: "ai-pulse-tool-call-result",
 					});
-				} else {
-					// create_file
+				} else if (event.toolName === "create_file") {
 					const content = typeof event.args.content === "string" ? event.args.content : "";
 
 					contentInner.createEl("div", { text: "Content:", cls: "ai-pulse-tool-call-label" });
@@ -554,6 +565,14 @@ export class ChatView extends ItemView {
 						text: content === "" ? "(empty file)" : content,
 						cls: "ai-pulse-tool-call-result",
 					});
+				} else if (event.toolName === "batch_delete_file") {
+					this.renderBatchDeleteApproval(contentInner, event.args);
+				} else if (event.toolName === "batch_move_file") {
+					this.renderBatchMoveApproval(contentInner, event.args);
+				} else if (event.toolName === "batch_set_frontmatter") {
+					this.renderBatchSetFrontmatterApproval(contentInner, event.args);
+				} else if (event.toolName === "batch_edit_file") {
+					this.renderBatchEditApproval(contentInner, event.args);
 				}
 			}
 
@@ -584,6 +603,126 @@ export class ChatView extends ItemView {
 
 			this.scrollToBottom();
 		});
+	}
+
+	private renderBatchDeleteApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
+		let filePaths: unknown[] = [];
+		if (Array.isArray(args.file_paths)) {
+			filePaths = args.file_paths;
+		} else if (typeof args.file_paths === "string") {
+			try { filePaths = JSON.parse(args.file_paths) as unknown[]; } catch { /* empty */ }
+		}
+
+		container.createEl("div", {
+			text: `Files to delete (${filePaths.length}):`,
+			cls: "ai-pulse-tool-call-label",
+		});
+
+		const list = container.createEl("ul", { cls: "ai-pulse-batch-list" });
+		for (const fp of filePaths) {
+			list.createEl("li", { text: typeof fp === "string" ? fp : "(invalid)" });
+		}
+	}
+
+	private renderBatchMoveApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
+		let operations: unknown[] = [];
+		if (Array.isArray(args.operations)) {
+			operations = args.operations;
+		} else if (typeof args.operations === "string") {
+			try { operations = JSON.parse(args.operations) as unknown[]; } catch { /* empty */ }
+		}
+
+		container.createEl("div", {
+			text: `Files to move (${operations.length}):`,
+			cls: "ai-pulse-tool-call-label",
+		});
+
+		const list = container.createEl("ul", { cls: "ai-pulse-batch-list" });
+		for (const op of operations) {
+			if (typeof op !== "object" || op === null) {
+				list.createEl("li", { text: "(invalid entry)" });
+				continue;
+			}
+			const o = op as Record<string, unknown>;
+			const from = typeof o.file_path === "string" ? o.file_path : "?";
+			const to = typeof o.new_path === "string" ? o.new_path : "?";
+			const li = list.createEl("li");
+			li.createSpan({ text: from, cls: "ai-pulse-batch-path" });
+			li.createSpan({ text: " \u2192 " });
+			li.createSpan({ text: to, cls: "ai-pulse-batch-path" });
+		}
+	}
+
+	private renderBatchSetFrontmatterApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
+		let operations: unknown[] = [];
+		if (Array.isArray(args.operations)) {
+			operations = args.operations;
+		} else if (typeof args.operations === "string") {
+			try { operations = JSON.parse(args.operations) as unknown[]; } catch { /* empty */ }
+		}
+
+		container.createEl("div", {
+			text: `Frontmatter updates (${operations.length} file${operations.length === 1 ? "" : "s"}):`,
+			cls: "ai-pulse-tool-call-label",
+		});
+
+		for (const op of operations) {
+			if (typeof op !== "object" || op === null) {
+				container.createEl("div", { text: "(invalid entry)", cls: "ai-pulse-tool-call-label" });
+				continue;
+			}
+			const o = op as Record<string, unknown>;
+			const fp = typeof o.file_path === "string" ? o.file_path : "?";
+
+			let propsStr = "{}";
+			if (typeof o.properties === "object" && o.properties !== null) {
+				propsStr = JSON.stringify(o.properties, null, 2);
+			} else if (typeof o.properties === "string") {
+				propsStr = o.properties;
+			}
+
+			container.createEl("div", { text: fp, cls: "ai-pulse-tool-call-label ai-pulse-batch-file-header" });
+			container.createEl("pre", { text: propsStr, cls: "ai-pulse-tool-call-result" });
+		}
+	}
+
+	private renderBatchEditApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
+		let operations: unknown[] = [];
+		if (Array.isArray(args.operations)) {
+			operations = args.operations;
+		} else if (typeof args.operations === "string") {
+			try { operations = JSON.parse(args.operations) as unknown[]; } catch { /* empty */ }
+		}
+
+		container.createEl("div", {
+			text: `File edits (${operations.length} file${operations.length === 1 ? "" : "s"}):`,
+			cls: "ai-pulse-tool-call-label",
+		});
+
+		for (const op of operations) {
+			if (typeof op !== "object" || op === null) {
+				container.createEl("div", { text: "(invalid entry)", cls: "ai-pulse-tool-call-label" });
+				continue;
+			}
+			const o = op as Record<string, unknown>;
+			const fp = typeof o.file_path === "string" ? o.file_path : "?";
+			const oldText = typeof o.old_text === "string" ? o.old_text : "";
+			const newText = typeof o.new_text === "string" ? o.new_text : "";
+
+			container.createEl("div", { text: fp, cls: "ai-pulse-tool-call-label ai-pulse-batch-file-header" });
+
+			container.createEl("div", { text: "Old text:", cls: "ai-pulse-tool-call-label" });
+			container.createEl("pre", {
+				text: oldText === "" ? "(empty \u2014 new file)" : oldText,
+				cls: "ai-pulse-tool-call-args",
+			});
+
+			container.createEl("div", { text: "New text:", cls: "ai-pulse-tool-call-label" });
+			container.createEl("pre", {
+				text: newText,
+				cls: "ai-pulse-tool-call-result",
+			});
+		}
 	}
 
 	private scrollToBottom(): void {

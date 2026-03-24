@@ -116,7 +116,14 @@ const TOOL_SYSTEM_PROMPT =
 	"ALWAYS prefer set_frontmatter over edit_file when modifying tags, aliases, or other frontmatter fields. " +
 	"RECOMMENDED: Read the file first to see existing frontmatter before calling set_frontmatter.\n\n" +
 	"Some tools (such as delete_file, edit_file, create_file, and move_file) require user approval before they execute. " +
-	"If the user declines an action, ask them why so you can better assist them.";
+	"If the user declines an action, ask them why so you can better assist them.\n\n" +
+	"BATCH TOOLS:\n" +
+	"When you need to perform the same type of operation on multiple files, prefer batch tools over calling individual tools repeatedly. " +
+	"Available batch tools: batch_search_files, batch_grep_search, batch_delete_file, batch_move_file, batch_set_frontmatter, batch_edit_file. " +
+	"Batch tools accept an array of operations and execute them all in one call, reporting per-item success/failure. " +
+	"Batch tools that modify files (delete, move, edit, set_frontmatter) require a single user approval for the entire batch. " +
+	"The parameters for batch tools use JSON arrays passed as strings. " +
+	"IMPORTANT: For batch_edit_file, you MUST still read each file first to get exact content before editing.";
 
 /**
  * Shared agent loop: injects the system prompt, calls the strategy for each
