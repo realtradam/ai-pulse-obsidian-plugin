@@ -1,8 +1,11 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type AIOrganizer from "./main";
-import type { ChatMessage } from "./ollama-client";
+import type { ChatMessage, ToolCallEvent } from "./ollama-client";
 import { sendChatMessage } from "./ollama-client";
 import { SettingsModal } from "./settings-modal";
+import { ToolModal } from "./tool-modal";
+import { TOOL_REGISTRY } from "./tools";
+import type { OllamaToolDefinition } from "./tools";
 
 export const VIEW_TYPE_CHAT = "ai-organizer-chat";
 
@@ -12,6 +15,7 @@ export class ChatView extends ItemView {
 	private messageContainer: HTMLDivElement | null = null;
 	private textarea: HTMLTextAreaElement | null = null;
 	private sendButton: HTMLButtonElement | null = null;
+	private toolsButton: HTMLButtonElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: AIOrganizer) {
 		super(leaf);
@@ -56,6 +60,21 @@ export class ChatView extends ItemView {
 			new SettingsModal(this.plugin).open();
 		});
 
+		// Tools button
+		this.toolsButton = buttonGroup.createEl("button", {
+			cls: "ai-organizer-tools-btn",
+			attr: { "aria-label": "Tools" },
+		});
+		setIcon(this.toolsButton, "wrench");
+		this.updateToolsButtonState();
+		this.toolsButton.addEventListener("click", () => {
+			const modal = new ToolModal(this.plugin);
+			modal.onClose = () => {
+				this.updateToolsButtonState();
+			};
+			modal.open();
+		});
+
 		// Send button
 		this.sendButton = buttonGroup.createEl("button", { text: "Send" });
 
@@ -80,6 +99,28 @@ export class ChatView extends ItemView {
 		this.messageContainer = null;
 		this.textarea = null;
 		this.sendButton = null;
+		this.toolsButton = null;
+	}
+
+	private getEnabledTools(): OllamaToolDefinition[] {
+		const tools: OllamaToolDefinition[] = [];
+		for (const tool of TOOL_REGISTRY) {
+			if (this.plugin.settings.enabledTools[tool.id] === true) {
+				tools.push(tool.definition);
+			}
+		}
+		return tools;
+	}
+
+	private hasAnyToolEnabled(): boolean {
+		return TOOL_REGISTRY.some(
+			(tool) => this.plugin.settings.enabledTools[tool.id] === true,
+		);
+	}
+
+	private updateToolsButtonState(): void {
+		if (this.toolsButton === null) return;
+		this.toolsButton.toggleClass("ai-organizer-tools-active", this.hasAnyToolEnabled());
 	}
 
 	private async handleSend(): Promise<void> {
@@ -109,10 +150,21 @@ export class ChatView extends ItemView {
 		this.setInputEnabled(false);
 
 		try {
+			const enabledTools = this.getEnabledTools();
+			const hasTools = enabledTools.length > 0;
+
+			const onToolCall = (event: ToolCallEvent): void => {
+				this.appendToolCall(event);
+				this.scrollToBottom();
+			};
+
 			const response = await sendChatMessage(
 				this.plugin.settings.ollamaUrl,
 				this.plugin.settings.model,
 				this.messages,
+				hasTools ? enabledTools : undefined,
+				hasTools ? this.plugin.app : undefined,
+				hasTools ? onToolCall : undefined,
 			);
 
 			this.messages.push({ role: "assistant", content: response });
@@ -141,6 +193,32 @@ export class ChatView extends ItemView {
 				: `ai-organizer-message ${role}`;
 
 		this.messageContainer.createDiv({ cls, text: content });
+	}
+
+	private appendToolCall(event: ToolCallEvent): void {
+		if (this.messageContainer === null) {
+			return;
+		}
+
+		const container = this.messageContainer.createDiv({ cls: "ai-organizer-tool-call" });
+
+		const header = container.createDiv({ cls: "ai-organizer-tool-call-header" });
+		setIcon(header.createSpan({ cls: "ai-organizer-tool-call-icon" }), "wrench");
+		header.createSpan({ text: event.friendlyName, cls: "ai-organizer-tool-call-name" });
+
+		container.createDiv({ text: event.summary, cls: "ai-organizer-tool-call-summary" });
+		container.createDiv({ text: event.resultSummary, cls: "ai-organizer-tool-call-result-summary" });
+
+		const details = container.createEl("details", { cls: "ai-organizer-tool-call-details" });
+		details.createEl("summary", { text: "Details" });
+
+		const argsStr = JSON.stringify(event.args, null, 2);
+		details.createEl("pre", { text: argsStr, cls: "ai-organizer-tool-call-args" });
+
+		const resultPreview = event.result.length > 500
+			? event.result.substring(0, 500) + "..."
+			: event.result;
+		details.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
 	}
 
 	private scrollToBottom(): void {

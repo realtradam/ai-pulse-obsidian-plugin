@@ -2,6 +2,7 @@ import { Plugin, WorkspaceLeaf } from "obsidian";
 import { AIOrganizerSettings, DEFAULT_SETTINGS } from "./settings";
 import { ChatView, VIEW_TYPE_CHAT } from "./chat-view";
 import { testConnection, listModels } from "./ollama-client";
+import { getDefaultToolStates } from "./tools";
 
 export default class AIOrganizer extends Plugin {
 	settings: AIOrganizerSettings = DEFAULT_SETTINGS;
@@ -57,6 +58,12 @@ export default class AIOrganizer extends Plugin {
 			{},
 			DEFAULT_SETTINGS,
 			await this.loadData() as Partial<AIOrganizerSettings> | null,
+		);
+		// Ensure enabledTools has entries for all registered tools
+		this.settings.enabledTools = Object.assign(
+			{},
+			getDefaultToolStates(),
+			this.settings.enabledTools,
 		);
 	}
 

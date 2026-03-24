@@ -90,3 +90,109 @@
 	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
 }
+
+
+.ai-organizer-tools-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px;
+	background: transparent;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.ai-organizer-tools-btn:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.ai-organizer-tools-btn.ai-organizer-tools-active {
+	color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
+.ai-organizer-tool-call {
+	align-self: flex-start;
+	max-width: 85%;
+	padding: 6px 10px;
+	border-radius: 6px;
+	background-color: var(--background-secondary-alt);
+	border-left: 3px solid var(--interactive-accent);
+	font-size: 0.85em;
+	margin: 2px 0;
+}
+
+.ai-organizer-tool-call-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 4px;
+	color: var(--text-muted);
+}
+
+.ai-organizer-tool-call-icon {
+	display: flex;
+	align-items: center;
+}
+
+.ai-organizer-tool-call-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.ai-organizer-tool-call-name {
+	font-weight: 600;
+}
+
+.ai-organizer-tool-call-summary {
+	margin: 4px 0 2px 0;
+	color: var(--text-normal);
+	font-style: italic;
+}
+
+.ai-organizer-tool-call-result-summary {
+	margin: 0 0 4px 0;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+.ai-organizer-tool-call-details {
+	margin-top: 4px;
+}
+
+.ai-organizer-tool-call-details > summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 0.9em;
+	user-select: none;
+}
+
+.ai-organizer-tool-call-details > summary:hover {
+	color: var(--text-normal);
+}
+
+.ai-organizer-tool-call-args,
+.ai-organizer-tool-call-result {
+	margin: 2px 0;
+	padding: 4px 6px;
+	border-radius: 4px;
+	background-color: var(--background-primary);
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	font-size: 0.9em;
+	max-height: 150px;
+	overflow-y: auto;
+}
+
+.ai-organizer-tool-call-result {
+	color: var(--text-muted);
+}
+
+.ai-organizer-tool-modal-desc {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	margin-bottom: 8px;
+}
