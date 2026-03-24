@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import type AIOrganizer from "./main";
 import type { ChatMessage, ToolCallEvent, ApprovalRequestEvent } from "./ollama-client";
 import { sendChatMessageStreaming } from "./ollama-client";
@@ -19,6 +19,7 @@ export class ChatView extends ItemView {
 	private abortController: AbortController | null = null;
 	private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private bubbleContent: Map<HTMLDivElement, string> = new Map();
+	private modelBadge: HTMLDivElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: AIOrganizer) {
 		super(leaf);
@@ -46,6 +47,10 @@ export class ChatView extends ItemView {
 		const messagesArea = contentEl.createDiv({ cls: "ai-organizer-messages-area" });
 		this.messageContainer = messagesArea.createDiv({ cls: "ai-organizer-messages" });
 
+		// --- Model Badge (top left) ---
+		this.modelBadge = messagesArea.createDiv({ cls: "ai-organizer-model-badge" });
+		this.updateModelBadge();
+
 		// --- FAB Speed Dial ---
 		const fab = messagesArea.createDiv({ cls: "ai-organizer-fab" });
 
@@ -66,7 +71,11 @@ export class ChatView extends ItemView {
 		});
 		setIcon(settingsBtn, "sliders-horizontal");
 		settingsBtn.addEventListener("click", () => {
-			new SettingsModal(this.plugin).open();
+			const modal = new SettingsModal(this.plugin);
+			modal.onClose = () => {
+				this.updateModelBadge();
+			};
+			modal.open();
 			// Blur to close the FAB
 			(document.activeElement as HTMLElement)?.blur();
 		});
@@ -145,6 +154,7 @@ export class ChatView extends ItemView {
 		this.textarea = null;
 		this.sendButton = null;
 		this.toolsButton = null;
+		this.modelBadge = null;
 		this.abortController = null;
 	}
 
@@ -167,6 +177,18 @@ export class ChatView extends ItemView {
 	private updateToolsButtonState(): void {
 		if (this.toolsButton === null) return;
 		this.toolsButton.toggleClass("ai-organizer-tools-active", this.hasAnyToolEnabled());
+	}
+
+	private updateModelBadge(): void {
+		if (this.modelBadge === null) return;
+		const model = this.plugin.settings.model;
+		if (model === "") {
+			this.modelBadge.setText("No model selected");
+			this.modelBadge.addClass("ai-organizer-model-badge-empty");
+		} else {
+			this.modelBadge.setText(model);
+			this.modelBadge.removeClass("ai-organizer-model-badge-empty");
+		}
 	}
 
 	private async handleSend(): Promise<void> {
@@ -197,6 +219,22 @@ export class ChatView extends ItemView {
 		this.setStreamingState(true);
 
 		let currentBubble: HTMLDivElement | null = null;
+
+		// Read custom system prompt from vault file if enabled
+		let userSystemPrompt: string | undefined;
+		if (this.plugin.settings.useSystemPromptFile) {
+			const promptPath = this.plugin.settings.systemPromptFile;
+			if (promptPath !== "") {
+				const promptFile = this.plugin.app.vault.getAbstractFileByPath(promptPath);
+				if (promptFile !== null && promptFile instanceof TFile) {
+					try {
+						userSystemPrompt = await this.plugin.app.vault.cachedRead(promptFile);
+					} catch {
+						// Silently skip if file can't be read
+					}
+				}
+			}
+		}
 
 		try {
 			const enabledTools = this.getEnabledTools();
@@ -252,6 +290,7 @@ export class ChatView extends ItemView {
 					num_ctx: this.plugin.settings.numCtx,
 					num_predict: this.plugin.settings.numPredict,
 				},
+				userSystemPrompt,
 				onChunk,
 				onToolCall: hasTools ? onToolCall : undefined,
 				onApprovalRequest: hasTools ? onApprovalRequest : undefined,
@@ -339,6 +378,18 @@ export class ChatView extends ItemView {
 			"",
 			this,
 		);
+
+		// Wire up internal [[wiki-links]] so they navigate on click
+		bubble.querySelectorAll("a.internal-link").forEach((link) => {
+			link.addEventListener("click", (evt) => {
+				evt.preventDefault();
+				const href = link.getAttribute("href");
+				if (href !== null) {
+					void this.plugin.app.workspace.openLinkText(href, "", false);
+				}
+			});
+		});
+
 		this.scrollToBottom();
 	}
 
@@ -435,10 +486,7 @@ export class ChatView extends ItemView {
 			container.createDiv({ text: event.message, cls: "ai-organizer-approval-message" });
 
 			// Show details for edit_file so the user can review the change
-			if (event.toolName === "edit_file") {
-				const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
-				const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
-
+			if (event.toolName === "edit_file" || event.toolName === "create_file") {
 				const collapse = container.createDiv({ cls: "ai-organizer-collapse ai-organizer-collapse-arrow" });
 				const collapseId = `approval-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 				const checkbox = collapse.createEl("input", {
@@ -450,24 +498,38 @@ export class ChatView extends ItemView {
 				const titleEl = collapse.createEl("label", {
 					cls: "ai-organizer-collapse-title",
 					attr: { for: collapseId },
-					text: "Review changes",
+					text: event.toolName === "create_file" ? "Review content" : "Review changes",
 				});
 				void titleEl;
 
 				const collapseContent = collapse.createDiv({ cls: "ai-organizer-collapse-content" });
 				const contentInner = collapseContent.createDiv({ cls: "ai-organizer-collapse-content-inner" });
 
-				contentInner.createEl("div", { text: "Old text:", cls: "ai-organizer-tool-call-label" });
-				contentInner.createEl("pre", {
-					text: oldText === "" ? "(empty \u2014 new file)" : oldText,
-					cls: "ai-organizer-tool-call-args",
-				});
+				if (event.toolName === "edit_file") {
+					const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
+					const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
 
-				contentInner.createEl("div", { text: "New text:", cls: "ai-organizer-tool-call-label" });
-				contentInner.createEl("pre", {
-					text: newText,
-					cls: "ai-organizer-tool-call-result",
-				});
+					contentInner.createEl("div", { text: "Old text:", cls: "ai-organizer-tool-call-label" });
+					contentInner.createEl("pre", {
+						text: oldText === "" ? "(empty \u2014 new file)" : oldText,
+						cls: "ai-organizer-tool-call-args",
+					});
+
+					contentInner.createEl("div", { text: "New text:", cls: "ai-organizer-tool-call-label" });
+					contentInner.createEl("pre", {
+						text: newText,
+						cls: "ai-organizer-tool-call-result",
+					});
+				} else {
+					// create_file
+					const content = typeof event.args.content === "string" ? event.args.content : "";
+
+					contentInner.createEl("div", { text: "Content:", cls: "ai-organizer-tool-call-label" });
+					contentInner.createEl("pre", {
+						text: content === "" ? "(empty file)" : content,
+						cls: "ai-organizer-tool-call-result",
+					});
+				}
 			}
 
 			const buttonRow = container.createDiv({ cls: "ai-organizer-approval-buttons" });

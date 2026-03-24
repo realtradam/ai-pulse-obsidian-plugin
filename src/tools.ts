@@ -115,6 +115,142 @@ async function executeDeleteFile(app: App, args: Record<string, unknown>): Promi
 }
 
 /**
+ * Execute the "grep_search" tool.
+ * Searches file contents for a text query, returning matching lines with context.
+ */
+async function executeGrepSearch(app: App, args: Record<string, unknown>): Promise<string> {
+	const query = typeof args.query === "string" ? args.query : "";
+	if (query === "") {
+		return "Error: query parameter is required.";
+	}
+
+	const filePattern = typeof args.file_pattern === "string" ? args.file_pattern.toLowerCase() : "";
+	const queryLower = query.toLowerCase();
+
+	const files = app.vault.getMarkdownFiles();
+	const results: string[] = [];
+	const maxResults = 50;
+	let totalMatches = 0;
+
+	for (const file of files) {
+		if (totalMatches >= maxResults) break;
+
+		// Optional file pattern filter
+		if (filePattern !== "" && !file.path.toLowerCase().includes(filePattern)) {
+			continue;
+		}
+
+		try {
+			const content = await app.vault.cachedRead(file);
+			const lines = content.split("\n");
+
+			for (let i = 0; i < lines.length; i++) {
+				const line = lines[i];
+				if (line !== undefined && line.toLowerCase().includes(queryLower)) {
+					results.push(`${file.path}:${i + 1}: ${line.trim()}`);
+					totalMatches++;
+					if (totalMatches >= maxResults) break;
+				}
+			}
+		} catch {
+			// Skip files that can't be read
+		}
+	}
+
+	if (results.length === 0) {
+		return "No matches found.";
+	}
+
+	const suffix = totalMatches >= maxResults
+		? `\n... results capped at ${maxResults}. Narrow your query for more specific results.`
+		: "";
+
+	return results.join("\n") + suffix;
+}
+
+/**
+ * Execute the "create_file" tool.
+ * Creates a new file at the given vault path with the provided content.
+ */
+async function executeCreateFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const content = typeof args.content === "string" ? args.content : "";
+
+	// Check if file already exists
+	const existing = app.vault.getAbstractFileByPath(filePath);
+	if (existing !== null) {
+		return `Error: A file already exists at "${filePath}". Use edit_file to modify it.`;
+	}
+
+	try {
+		// Ensure parent folder exists
+		const lastSlash = filePath.lastIndexOf("/");
+		if (lastSlash > 0) {
+			const folderPath = filePath.substring(0, lastSlash);
+			const folder = app.vault.getFolderByPath(folderPath);
+			if (folder === null) {
+				await app.vault.createFolder(folderPath);
+			}
+		}
+
+		await app.vault.create(filePath, content);
+		return `File created at "${filePath}".`;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : "Unknown error";
+		return `Error creating file: ${msg}`;
+	}
+}
+
+/**
+ * Execute the "move_file" tool.
+ * Moves or renames a file, auto-updating all links.
+ */
+async function executeMoveFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const newPath = typeof args.new_path === "string" ? args.new_path : "";
+	if (newPath === "") {
+		return "Error: new_path parameter is required.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	// Check if destination already exists
+	const destExists = app.vault.getAbstractFileByPath(newPath);
+	if (destExists !== null) {
+		return `Error: A file or folder already exists at "${newPath}".`;
+	}
+
+	try {
+		// Ensure target folder exists
+		const lastSlash = newPath.lastIndexOf("/");
+		if (lastSlash > 0) {
+			const folderPath = newPath.substring(0, lastSlash);
+			const folder = app.vault.getFolderByPath(folderPath);
+			if (folder === null) {
+				await app.vault.createFolder(folderPath);
+			}
+		}
+
+		await app.fileManager.renameFile(file, newPath);
+		return `File moved from "${filePath}" to "${newPath}". All links have been updated.`;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : "Unknown error";
+		return `Error moving file: ${msg}`;
+	}
+}
+
+/**
  * Execute the "get_current_note" tool.
  * Returns the vault-relative path of the currently active note.
  */
@@ -388,6 +524,144 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			},
 		},
 		execute: executeEditFile,
+	},
+	{
+		id: "grep_search",
+		label: "Search File Contents",
+		description: "Search for text across all markdown files in the vault.",
+		friendlyName: "Search Contents",
+		requiresApproval: false,
+		summarize: (args) => {
+			const query = typeof args.query === "string" ? args.query : "";
+			const filePattern = typeof args.file_pattern === "string" ? args.file_pattern : "";
+			const suffix = filePattern !== "" ? ` in "${filePattern}"` : "";
+			return `"${query}"${suffix}`;
+		},
+		summarizeResult: (result) => {
+			if (result === "No matches found.") {
+				return "No results found";
+			}
+			const lines = result.split("\n").filter((l) => l.length > 0 && !l.startsWith("..."));
+			const cappedMatch = result.match(/results capped at (\d+)/);
+			const count = cappedMatch !== null ? `${cappedMatch[1]}+` : `${lines.length}`;
+			return `${count} match${lines.length === 1 ? "" : "es"} found`;
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "grep_search",
+				description: "Search for a text string across all markdown file contents in the vault. Returns matching lines with file paths and line numbers (e.g. 'folder/note.md:12: matching line'). Case-insensitive. Optionally filter by file path pattern.",
+				parameters: {
+					type: "object",
+					required: ["query"],
+					properties: {
+						query: {
+							type: "string",
+							description: "The text to search for in file contents. Case-insensitive.",
+						},
+						file_pattern: {
+							type: "string",
+							description: "Optional filter: only search files whose path contains this string (e.g. 'journal/' or 'project').",
+						},
+					},
+				},
+			},
+		},
+		execute: executeGrepSearch,
+	},
+	{
+		id: "create_file",
+		label: "Create File",
+		description: "Create a new file in the vault (requires approval).",
+		friendlyName: "Create File",
+		requiresApproval: true,
+		approvalMessage: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			return `Create "${filePath}"?`;
+		},
+		summarize: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			return `"/${filePath}"`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
+			if (result.includes("declined")) {
+				return "Declined by user";
+			}
+			return "File created";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "create_file",
+				description: "Create a new file in the Obsidian vault. Parent folders are created automatically if they don't exist. Fails if a file already exists at the path — use edit_file to modify existing files. This action requires user approval.",
+				parameters: {
+					type: "object",
+					required: ["file_path"],
+					properties: {
+						file_path: {
+							type: "string",
+							description: "The vault-relative path for the new file (e.g. 'folder/new-note.md').",
+						},
+						content: {
+							type: "string",
+							description: "The text content to write to the new file. Defaults to empty string if not provided.",
+						},
+					},
+				},
+			},
+		},
+		execute: executeCreateFile,
+	},
+	{
+		id: "move_file",
+		label: "Move/Rename File",
+		description: "Move or rename a file and auto-update all links (requires approval).",
+		friendlyName: "Move File",
+		requiresApproval: true,
+		approvalMessage: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			const newPath = typeof args.new_path === "string" ? args.new_path : "unknown";
+			return `Move "${filePath}" to "${newPath}"?`;
+		},
+		summarize: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			const newPath = typeof args.new_path === "string" ? args.new_path : "";
+			return `"/${filePath}" → "/${newPath}"`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
+			if (result.includes("declined")) {
+				return "Declined by user";
+			}
+			return "File moved";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "move_file",
+				description: "Move or rename a file in the Obsidian vault. All internal links throughout the vault are automatically updated to reflect the new path. Target folders are created automatically if they don't exist. The file_path must be an exact path as returned by search_files. This action requires user approval.",
+				parameters: {
+					type: "object",
+					required: ["file_path", "new_path"],
+					properties: {
+						file_path: {
+							type: "string",
+							description: "The current vault-relative path of the file (e.g. 'folder/note.md').",
+						},
+						new_path: {
+							type: "string",
+							description: "The new vault-relative path for the file (e.g. 'new-folder/renamed-note.md').",
+						},
+					},
+				},
+			},
+		},
+		execute: executeMoveFile,
 	},
 ];
 

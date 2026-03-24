@@ -7,6 +7,8 @@ export interface AIOrganizerSettings {
 	temperature: number;
 	numCtx: number;
 	numPredict: number;
+	useSystemPromptFile: boolean;
+	systemPromptFile: string;
 }
 
 export const DEFAULT_SETTINGS: AIOrganizerSettings = {
@@ -16,4 +18,6 @@ export const DEFAULT_SETTINGS: AIOrganizerSettings = {
 	temperature: 0.7,
 	numCtx: 4096,
 	numPredict: -1,
+	useSystemPromptFile: false,
+	systemPromptFile: "agent.md",
 };

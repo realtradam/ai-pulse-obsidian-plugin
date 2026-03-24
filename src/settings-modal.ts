@@ -73,6 +73,56 @@ export class SettingsModal extends Modal {
 		// Move connect above model in the DOM
 		contentEl.insertBefore(connectSetting.settingEl, modelSetting.settingEl);
 
+		// --- System Prompt ---
+
+		const promptHeader = contentEl.createEl("h4", { text: "System Prompt" });
+		promptHeader.style.marginTop = "16px";
+		promptHeader.style.marginBottom = "4px";
+
+		// File path setting (disabled/enabled based on toggle)
+		let fileInputEl: HTMLInputElement | null = null;
+		const fileSetting = new Setting(contentEl)
+			.setName("Prompt File")
+			.setDesc("Vault path to a note whose content will be used as the system prompt.")
+			.addText((text) => {
+				text
+					.setPlaceholder("agent.md")
+					.setValue(this.plugin.settings.systemPromptFile)
+					.onChange(async (value) => {
+						this.plugin.settings.systemPromptFile = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.style.width = "200px";
+				fileInputEl = text.inputEl;
+			});
+
+		const updateFileSettingState = (enabled: boolean): void => {
+			fileSetting.settingEl.toggleClass("ai-organizer-setting-disabled", !enabled);
+			if (fileInputEl !== null) {
+				fileInputEl.disabled = !enabled;
+			}
+		};
+
+		// Toggle to enable/disable
+		const toggleSetting = new Setting(contentEl)
+			.setName("Use Custom Instructions")
+			.setDesc("Read a vault note as persistent AI instructions (e.g. formatting rules, writing style).")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.useSystemPromptFile)
+					.onChange(async (value) => {
+						this.plugin.settings.useSystemPromptFile = value;
+						await this.plugin.saveSettings();
+						updateFileSettingState(value);
+					});
+			});
+
+		// Move toggle above file path in the DOM
+		contentEl.insertBefore(toggleSetting.settingEl, fileSetting.settingEl);
+
+		// Set initial state
+		updateFileSettingState(this.plugin.settings.useSystemPromptFile);
+
 		// --- Generation Parameters ---
 
 		const paramHeader = contentEl.createEl("h4", { text: "Generation Parameters" });

@@ -67,6 +67,7 @@ interface AgentLoopOptions {
 	messages: ChatMessage[];
 	tools?: OllamaToolDefinition[];
 	app?: App;
+	userSystemPrompt?: string;
 	onToolCall?: (event: ToolCallEvent) => void;
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
 	sendRequest: ChatRequestStrategy;
@@ -80,6 +81,12 @@ const TOOL_SYSTEM_PROMPT =
 	"When you use the search_files tool, the results contain exact file paths. " +
 	"You MUST use these exact paths when calling read_file, edit_file, or referencing files. " +
 	"NEVER guess or modify file paths — always use the paths returned by search_files or get_current_note verbatim.\n\n" +
+	"LINKING TO NOTES:\n" +
+	"When you mention a note that exists in the vault, link to it using Obsidian's wiki-link syntax: [[Note Name]]. " +
+	"Use the file's basename (without the .md extension and without folder prefixes) for simple links, e.g. [[My Note]]. " +
+	"If you need to show different display text, use [[Note Name|display text]]. " +
+	"Feel free to link to notes whenever it is helpful — for example when listing search results, suggesting related notes, or referencing files you have read or edited. " +
+	"Links make your responses more useful because the user can click them to navigate directly to that note.\n\n" +
 	"EDITING FILES — MANDATORY WORKFLOW:\n" +
 	"The edit_file tool performs a find-and-replace. You provide old_text (the exact text currently in the file) and new_text (what to replace it with). " +
 	"If old_text does not match the file contents exactly, the edit WILL FAIL.\n" +
@@ -93,7 +100,15 @@ const TOOL_SYSTEM_PROMPT =
 	"If the file is NOT empty, old_text MUST NOT be empty — copy the exact passage you want to change from the read_file output.\n" +
 	"old_text must include enough surrounding context (a few lines) to uniquely identify the location in the file. " +
 	"Preserve the exact whitespace, indentation, and newlines from the read_file output.\n\n" +
-	"Some tools (such as delete_file and edit_file) require user approval before they execute. " +
+	"CREATING FILES:\n" +
+	"Use create_file to make new notes. It will fail if the file already exists — use edit_file for existing files. " +
+	"Parent folders are created automatically.\n\n" +
+	"MOVING/RENAMING FILES:\n" +
+	"Use move_file to move or rename a file. All [[wiki-links]] across the vault are automatically updated.\n\n" +
+	"SEARCHING FILE CONTENTS:\n" +
+	"Use grep_search to find text inside file contents (like grep). " +
+	"Use search_files to find files by name/path. Use grep_search to find files containing specific text.\n\n" +
+	"Some tools (such as delete_file, edit_file, create_file, and move_file) require user approval before they execute. " +
 	"If the user declines an action, ask them why so you can better assist them.";
 
 /**
@@ -102,15 +117,25 @@ const TOOL_SYSTEM_PROMPT =
  * text response or the iteration cap is reached.
  */
 async function chatAgentLoop(opts: AgentLoopOptions): Promise<string> {
-	const { messages, tools, app, onToolCall, onApprovalRequest, sendRequest } = opts;
+	const { messages, tools, app, userSystemPrompt, onToolCall, onApprovalRequest, sendRequest } = opts;
 	const maxIterations = 10;
 	let iterations = 0;
 
 	const workingMessages = messages.map((m) => ({ ...m }));
 
-	// Inject system prompt when tools are available
-	if (tools !== undefined && tools.length > 0) {
-		workingMessages.unshift({ role: "system", content: TOOL_SYSTEM_PROMPT });
+	// Build combined system prompt from tool instructions + user custom prompt
+	const hasTools = tools !== undefined && tools.length > 0;
+	const hasUserPrompt = userSystemPrompt !== undefined && userSystemPrompt.trim() !== "";
+
+	if (hasTools || hasUserPrompt) {
+		const parts: string[] = [];
+		if (hasTools) {
+			parts.push(TOOL_SYSTEM_PROMPT);
+		}
+		if (hasUserPrompt) {
+			parts.push("USER INSTRUCTIONS:\n" + userSystemPrompt.trim());
+		}
+		workingMessages.unshift({ role: "system", content: parts.join("\n\n") });
 	}
 
 	while (iterations < maxIterations) {
@@ -315,6 +340,7 @@ export async function sendChatMessage(
 	app?: App,
 	onToolCall?: (event: ToolCallEvent) => void,
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>,
+	userSystemPrompt?: string,
 ): Promise<string> {
 	const sendRequest: ChatRequestStrategy = async (workingMessages) => {
 		const body: Record<string, unknown> = {
@@ -357,6 +383,7 @@ export async function sendChatMessage(
 		messages,
 		tools,
 		app,
+		userSystemPrompt,
 		onToolCall,
 		onApprovalRequest,
 		sendRequest,
@@ -377,6 +404,7 @@ export interface StreamingChatOptions {
 	tools?: OllamaToolDefinition[];
 	app?: App;
 	options?: ModelOptions;
+	userSystemPrompt?: string;
 	onChunk: (text: string) => void;
 	onToolCall?: (event: ToolCallEvent) => void;
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
@@ -429,7 +457,7 @@ async function* readNdjsonStream(
 export async function sendChatMessageStreaming(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	const { ollamaUrl, model, tools, app, options, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
+	const { ollamaUrl, model, tools, app, options, userSystemPrompt, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
 
 	const sendRequest: ChatRequestStrategy = Platform.isMobile
 		? buildMobileStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble)
@@ -439,6 +467,7 @@ export async function sendChatMessageStreaming(
 		messages: opts.messages,
 		tools,
 		app,
+		userSystemPrompt,
 		onToolCall,
 		onApprovalRequest,
 		sendRequest,
