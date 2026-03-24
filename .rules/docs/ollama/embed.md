@@ -1,8 +1,16 @@
-# Generate embeddings
+# Generate Embeddings
 
 `POST /api/embed` — Creates vector embeddings representing the input text.
 
 **Server:** `http://localhost:11434`
+
+Embeddings turn text into numeric vectors for semantic search, retrieval, and RAG pipelines. Vector length depends on the model (typically 384–1024 dimensions). Vectors are **L2-normalized** (unit-length).
+
+## Recommended Models
+
+- `embeddinggemma`
+- `qwen3-embedding`
+- `all-minilm`
 
 ## Request
 
@@ -54,3 +62,9 @@ curl http://localhost:11434/api/embed -d '{
   "dimensions": 128
 }'
 ```
+
+## Tips
+
+- Use **cosine similarity** for most semantic search use cases.
+- Use the **same embedding model** for both indexing and querying.
+- Batch multiple strings in one request for efficiency.
