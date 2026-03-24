@@ -42,6 +42,10 @@ export interface ToolEntry {
 async function executeSearchFiles(app: App, args: Record<string, unknown>): Promise<string> {
 	const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
 	if (query === "") {
+		// Detect common misuse: model passed batch_search_files params to search_files
+		if (args.queries !== undefined) {
+			return "Error: query parameter is required. You passed 'queries' (plural) — use search_files with a single 'query' string, or use batch_search_files for multiple queries.";
+		}
 		return "Error: query parameter is required.";
 	}
 
@@ -138,6 +142,9 @@ async function executeDeleteFile(app: App, args: Record<string, unknown>): Promi
 async function executeGrepSearch(app: App, args: Record<string, unknown>): Promise<string> {
 	const query = typeof args.query === "string" ? args.query : "";
 	if (query === "") {
+		if (args.queries !== undefined) {
+			return "Error: query parameter is required. You passed 'queries' (plural) — use grep_search with a single 'query' string, or use batch_grep_search for multiple queries.";
+		}
 		return "Error: query parameter is required.";
 	}
 
@@ -624,9 +631,15 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 		requiresApproval: false,
 		summarize: (args) => {
 			const query = typeof args.query === "string" ? args.query : "";
+			if (query === "" && args.queries !== undefined) {
+				return "(wrong params: used 'queries' instead of 'query')";
+			}
 			return `"${query}"`;
 		},
 		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
 			if (result === "No files found matching the query.") {
 				return "No results found";
 			}
@@ -827,10 +840,16 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 		summarize: (args) => {
 			const query = typeof args.query === "string" ? args.query : "";
 			const filePattern = typeof args.file_pattern === "string" ? args.file_pattern : "";
+			if (query === "" && args.queries !== undefined) {
+				return "(wrong params: used 'queries' instead of 'query')";
+			}
 			const suffix = filePattern !== "" ? ` in "${filePattern}"` : "";
 			return `"${query}"${suffix}`;
 		},
 		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
 			if (result === "No matches found.") {
 				return "No results found";
 			}
@@ -1031,6 +1050,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			return `${count} search quer${count === 1 ? "y" : "ies"}`;
 		},
 		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
 			const sections = result.split("--- Query").length - 1;
 			return `${sections} search${sections === 1 ? "" : "es"} completed`;
 		},
@@ -1066,6 +1086,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			return `${count} content search${count === 1 ? "" : "es"}`;
 		},
 		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
 			const sections = result.split("--- Query").length - 1;
 			return `${sections} search${sections === 1 ? "" : "es"} completed`;
 		},

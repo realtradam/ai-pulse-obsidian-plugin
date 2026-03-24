@@ -82,12 +82,19 @@ const TOOL_SYSTEM_PROMPT =
 	"When you use the search_files tool, the results contain exact file paths. " +
 	"You MUST use these exact paths when calling read_file, edit_file, or referencing files. " +
 	"NEVER guess or modify file paths — always use the paths returned by search_files or get_current_note verbatim.\n\n" +
-	"LINKING TO NOTES:\n" +
-	"When you mention a note that exists in the vault, link to it using Obsidian's wiki-link syntax: [[Note Name]]. " +
-	"Use the file's basename (without the .md extension and without folder prefixes) for simple links, e.g. [[My Note]]. " +
-	"If you need to show different display text, use [[Note Name|display text]]. " +
-	"Feel free to link to notes whenever it is helpful — for example when listing search results, suggesting related notes, or referencing files you have read or edited. " +
-	"Links make your responses more useful because the user can click them to navigate directly to that note.\n\n" +
+	"LINKING TO NOTES — MANDATORY FORMAT:\n" +
+	"When referencing any note that exists in the vault, you MUST use Obsidian wiki-link syntax.\n" +
+	"FORMAT: [[exact file path without .md extension]]\n" +
+	"RULES:\n" +
+	"1. ALWAYS use the full vault-relative path minus the .md extension.\n" +
+	"   Example: a file at 'projects/2024/my-note.md' MUST be linked as [[projects/2024/my-note]].\n" +
+	"2. NEVER use just the basename when the file is inside a subfolder.\n" +
+	"   WRONG: [[my-note]]  CORRECT: [[projects/2024/my-note]]\n" +
+	"3. For files in the vault root (no folder), use just the name: [[my-note]].\n" +
+	"4. NEVER include the .md extension in the link: WRONG: [[my-note.md]]  CORRECT: [[my-note]]\n" +
+	"5. To show different display text, use a pipe: [[projects/2024/my-note|My Note]].\n" +
+	"6. Get the exact path from search_files, read_file, or get_current_note output, strip the .md extension, and use that as the link target.\n" +
+	"7. Link to notes whenever helpful — search results, related notes, files you read or edited. Links let the user click to navigate directly.\n\n" +
 	"EDITING FILES — MANDATORY WORKFLOW:\n" +
 	"The edit_file tool performs a find-and-replace. You provide old_text (the exact text currently in the file) and new_text (what to replace it with). " +
 	"If old_text does not match the file contents exactly, the edit WILL FAIL.\n" +
