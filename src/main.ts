@@ -1,11 +1,11 @@
 import { Plugin, WorkspaceLeaf } from "obsidian";
-import { AIOrganizerSettings, DEFAULT_SETTINGS } from "./settings";
+import { AIPulseSettings, DEFAULT_SETTINGS } from "./settings";
 import { ChatView, VIEW_TYPE_CHAT } from "./chat-view";
 import { testConnection, listModels } from "./ollama-client";
 import { getDefaultToolStates } from "./tools";
 
-export default class AIOrganizer extends Plugin {
-	settings: AIOrganizerSettings = DEFAULT_SETTINGS;
+export default class AIPulse extends Plugin {
+	settings: AIPulseSettings = DEFAULT_SETTINGS;
 
 	// Runtime connection state (not persisted)
 	connectionStatus: "disconnected" | "connecting" | "connected" | "error" = "disconnected";
@@ -57,7 +57,7 @@ export default class AIOrganizer extends Plugin {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			await this.loadData() as Partial<AIOrganizerSettings> | null,
+			await this.loadData() as Partial<AIPulseSettings> | null,
 		);
 		// Ensure enabledTools has entries for all registered tools
 		this.settings.enabledTools = Object.assign(

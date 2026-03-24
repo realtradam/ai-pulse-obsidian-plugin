@@ -1,6 +1,6 @@
-# Obsidian API Docs — AI Note Organizer
+# Obsidian API Docs — AI Pulse
 
-This plugin organizes notes via AI powered by Ollama. Docs are in `.rules/docs/obsidian/`.
+The Obsidian AI Note Management Plugin — powered by Ollama. Docs are in `.rules/docs/obsidian/`.
 
 ## Where to Look
 

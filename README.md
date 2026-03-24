@@ -1,6 +1,6 @@
-# AI Organizer
+# AI Pulse
 
-An Obsidian plugin that organizes notes via AI powered by [Ollama](https://ollama.com).
+The Obsidian AI Note Management Plugin — powered by [Ollama](https://ollama.com).
 
 ## Prerequisites
 
@@ -11,8 +11,8 @@ An Obsidian plugin that organizes notes via AI powered by [Ollama](https://ollam
 ## Building from Source
 
 ```bash
-git clone https://github.com/your-repo/aiorganizer_obsidian.git
-cd aiorganizer_obsidian
+git clone https://github.com/your-repo/ai-pulse.git
+cd ai-pulse
 npm install
 npm run build
 ```
@@ -30,9 +30,9 @@ npm run dev
 1. Build the plugin (see above).
 2. Copy `main.js`, `styles.css`, and `manifest.json` into your vault at:
    ```
-   <VaultFolder>/.obsidian/plugins/ai-organizer/
+   <VaultFolder>/.obsidian/plugins/ai-pulse/
    ```
-3. Open Obsidian, go to **Settings > Community Plugins**, and enable **AI Organizer**.
+3. Open Obsidian, go to **Settings > Community Plugins**, and enable **AI Pulse**.
 
 ### Development Installation
 
@@ -40,7 +40,7 @@ Clone or symlink this repo directly into your vault's plugin folder for live dev
 
 ```bash
 cd /path/to/your/vault/.obsidian/plugins
-ln -s /path/to/aiorganizer_obsidian ai-organizer
+ln -s /path/to/ai-pulse ai-pulse
 ```
 
 Then run `npm run dev` and reload Obsidian to pick up changes.

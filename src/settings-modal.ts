@@ -1,15 +1,15 @@
 import { Modal, Setting } from "obsidian";
-import type AIOrganizer from "./main";
+import type AIPulse from "./main";
 import { showModel } from "./ollama-client";
 import type { ModelInfo } from "./ollama-client";
 
 export class SettingsModal extends Modal {
-	private plugin: AIOrganizer;
+	private plugin: AIPulse;
 	private modelInfo: ModelInfo | null = null;
 	private ctxMaxEl: HTMLElement | null = null;
 	private ctxInputEl: HTMLInputElement | null = null;
 
-	constructor(plugin: AIOrganizer) {
+	constructor(plugin: AIPulse) {
 		super(plugin.app);
 		this.plugin = plugin;
 	}
@@ -17,7 +17,7 @@ export class SettingsModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass("ai-organizer-settings-modal");
+		contentEl.addClass("ai-pulse-settings-modal");
 
 		this.setTitle("AI Settings");
 
@@ -97,7 +97,7 @@ export class SettingsModal extends Modal {
 			});
 
 		const updateFileSettingState = (enabled: boolean): void => {
-			fileSetting.settingEl.toggleClass("ai-organizer-setting-disabled", !enabled);
+			fileSetting.settingEl.toggleClass("ai-pulse-setting-disabled", !enabled);
 			if (fileInputEl !== null) {
 				fileInputEl.disabled = !enabled;
 			}
@@ -135,7 +135,7 @@ export class SettingsModal extends Modal {
 			.setDesc("Controls randomness. Lower = more focused, higher = more creative.");
 
 		const tempValueEl = tempSetting.descEl.createSpan({
-			cls: "ai-organizer-param-value",
+			cls: "ai-pulse-param-value",
 			text: ` (${this.plugin.settings.temperature.toFixed(2)})`,
 		});
 
@@ -180,7 +180,7 @@ export class SettingsModal extends Modal {
 		const ctxControlEl = ctxSetting.controlEl;
 		ctxControlEl.style.flexDirection = "column";
 		ctxControlEl.style.alignItems = "flex-end";
-		this.ctxMaxEl = ctxControlEl.createDiv({ cls: "ai-organizer-ctx-max" });
+		this.ctxMaxEl = ctxControlEl.createDiv({ cls: "ai-pulse-ctx-max" });
 		this.ctxMaxEl.style.cursor = "pointer";
 		this.ctxMaxEl.addEventListener("click", async () => {
 			if (this.modelInfo !== null && this.ctxInputEl !== null) {
@@ -242,7 +242,7 @@ export class SettingsModal extends Modal {
 	private updateCtxMaxWarning(): void {
 		if (this.ctxMaxEl === null || this.modelInfo === null) return;
 		const exceeds = this.plugin.settings.numCtx > this.modelInfo.contextLength;
-		this.ctxMaxEl.toggleClass("ai-organizer-ctx-max-warn", exceeds);
+		this.ctxMaxEl.toggleClass("ai-pulse-ctx-max-warn", exceeds);
 	}
 
 	private populateModelDropdown(selectEl: HTMLSelectElement): void {

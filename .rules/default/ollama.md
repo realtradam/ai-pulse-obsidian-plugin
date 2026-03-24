@@ -1,4 +1,4 @@
-# Ollama API Docs — AI Note Organizer
+# Ollama API Docs — AI Pulse
 
 Local LLM inference via Ollama (`http://localhost:11434`). Docs are in `.rules/docs/ollama/`.
 

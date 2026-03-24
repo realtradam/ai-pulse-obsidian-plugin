@@ -1,7 +1,7 @@
 {
-	"name": "ai-organizer",
+	"name": "ai-pulse",
 	"version": "1.0.0",
-	"description": "Organize notes via AI powered by Ollama.",
+	"description": "The Obsidian AI Note Management Plugin \u2014 powered by Ollama.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

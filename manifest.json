@@ -1,9 +1,9 @@
 {
-	"id": "ai-organizer",
-	"name": "AI Organizer",
+	"id": "ai-pulse",
+	"name": "AI Pulse",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Organize notes via AI powered by Ollama.",
+	"description": "The Obsidian AI Note Management Plugin — powered by Ollama.",
 	"author": "Adam Malczewski",
 	"authorUrl": "https://malcz.com",
 	"isDesktopOnly": false

@@ -1,5 +1,5 @@
 import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
-import type AIOrganizer from "./main";
+import type AIPulse from "./main";
 import type { ChatMessage, ToolCallEvent, ApprovalRequestEvent } from "./ollama-client";
 import { sendChatMessageStreaming } from "./ollama-client";
 import { SettingsModal } from "./settings-modal";
@@ -7,10 +7,10 @@ import { ToolModal } from "./tool-modal";
 import { TOOL_REGISTRY } from "./tools";
 import type { OllamaToolDefinition } from "./tools";
 
-export const VIEW_TYPE_CHAT = "ai-organizer-chat";
+export const VIEW_TYPE_CHAT = "ai-pulse-chat";
 
 export class ChatView extends ItemView {
-	private plugin: AIOrganizer;
+	private plugin: AIPulse;
 	private messages: ChatMessage[] = [];
 	private messageContainer: HTMLDivElement | null = null;
 	private textarea: HTMLTextAreaElement | null = null;
@@ -21,7 +21,7 @@ export class ChatView extends ItemView {
 	private bubbleContent: Map<HTMLDivElement, string> = new Map();
 	private modelBadge: HTMLDivElement | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: AIOrganizer) {
+	constructor(leaf: WorkspaceLeaf, plugin: AIPulse) {
 		super(leaf);
 		this.plugin = plugin;
 	}
@@ -41,32 +41,32 @@ export class ChatView extends ItemView {
 	async onOpen(): Promise<void> {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass("ai-organizer-chat-container");
+		contentEl.addClass("ai-pulse-chat-container");
 
 		// --- Top region: Chat area ---
-		const messagesArea = contentEl.createDiv({ cls: "ai-organizer-messages-area" });
-		this.messageContainer = messagesArea.createDiv({ cls: "ai-organizer-messages" });
+		const messagesArea = contentEl.createDiv({ cls: "ai-pulse-messages-area" });
+		this.messageContainer = messagesArea.createDiv({ cls: "ai-pulse-messages" });
 
 		// --- Model Badge (top left) ---
-		this.modelBadge = messagesArea.createDiv({ cls: "ai-organizer-model-badge" });
+		this.modelBadge = messagesArea.createDiv({ cls: "ai-pulse-model-badge" });
 		this.updateModelBadge();
 
 		// --- FAB Speed Dial ---
-		const fab = messagesArea.createDiv({ cls: "ai-organizer-fab" });
+		const fab = messagesArea.createDiv({ cls: "ai-pulse-fab" });
 
 		// Main FAB trigger button (first child)
 		const fabTrigger = fab.createEl("button", {
-			cls: "ai-organizer-fab-trigger",
+			cls: "ai-pulse-fab-trigger",
 			attr: { "aria-label": "Actions", tabindex: "0" },
 		});
 		setIcon(fabTrigger, "settings");
 
 		// Speed dial actions (revealed on focus-within)
-		const settingsAction = fab.createDiv({ cls: "ai-organizer-fab-action" });
-		const settingsLabel = settingsAction.createSpan({ cls: "ai-organizer-fab-label", text: "AI Settings" });
+		const settingsAction = fab.createDiv({ cls: "ai-pulse-fab-action" });
+		const settingsLabel = settingsAction.createSpan({ cls: "ai-pulse-fab-label", text: "AI Settings" });
 		void settingsLabel;
 		const settingsBtn = settingsAction.createEl("button", {
-			cls: "ai-organizer-fab-btn",
+			cls: "ai-pulse-fab-btn",
 			attr: { "aria-label": "Settings" },
 		});
 		setIcon(settingsBtn, "sliders-horizontal");
@@ -80,11 +80,11 @@ export class ChatView extends ItemView {
 			(document.activeElement as HTMLElement)?.blur();
 		});
 
-		const toolsAction = fab.createDiv({ cls: "ai-organizer-fab-action" });
-		const toolsLabel = toolsAction.createSpan({ cls: "ai-organizer-fab-label", text: "Tools" });
+		const toolsAction = fab.createDiv({ cls: "ai-pulse-fab-action" });
+		const toolsLabel = toolsAction.createSpan({ cls: "ai-pulse-fab-label", text: "Tools" });
 		void toolsLabel;
 		this.toolsButton = toolsAction.createEl("button", {
-			cls: "ai-organizer-fab-btn",
+			cls: "ai-pulse-fab-btn",
 			attr: { "aria-label": "Tools" },
 		});
 		setIcon(this.toolsButton, "wrench");
@@ -98,11 +98,11 @@ export class ChatView extends ItemView {
 			(document.activeElement as HTMLElement)?.blur();
 		});
 
-		const clearAction = fab.createDiv({ cls: "ai-organizer-fab-action" });
-		const clearLabel = clearAction.createSpan({ cls: "ai-organizer-fab-label", text: "Clear Chat" });
+		const clearAction = fab.createDiv({ cls: "ai-pulse-fab-action" });
+		const clearLabel = clearAction.createSpan({ cls: "ai-pulse-fab-label", text: "Clear Chat" });
 		void clearLabel;
 		const clearBtn = clearAction.createEl("button", {
-			cls: "ai-organizer-fab-btn",
+			cls: "ai-pulse-fab-btn",
 			attr: { "aria-label": "Clear Chat" },
 		});
 		setIcon(clearBtn, "trash-2");
@@ -115,7 +115,7 @@ export class ChatView extends ItemView {
 			(document.activeElement as HTMLElement)?.blur();
 		});
 
-		const inputRow = messagesArea.createDiv({ cls: "ai-organizer-input-row" });
+		const inputRow = messagesArea.createDiv({ cls: "ai-pulse-input-row" });
 		this.textarea = inputRow.createEl("textarea", {
 			attr: { placeholder: "Type a message...", rows: "2" },
 		});
@@ -176,7 +176,7 @@ export class ChatView extends ItemView {
 
 	private updateToolsButtonState(): void {
 		if (this.toolsButton === null) return;
-		this.toolsButton.toggleClass("ai-organizer-tools-active", this.hasAnyToolEnabled());
+		this.toolsButton.toggleClass("ai-pulse-tools-active", this.hasAnyToolEnabled());
 	}
 
 	private updateModelBadge(): void {
@@ -184,10 +184,10 @@ export class ChatView extends ItemView {
 		const model = this.plugin.settings.model;
 		if (model === "") {
 			this.modelBadge.setText("No model selected");
-			this.modelBadge.addClass("ai-organizer-model-badge-empty");
+			this.modelBadge.addClass("ai-pulse-model-badge-empty");
 		} else {
 			this.modelBadge.setText(model);
-			this.modelBadge.removeClass("ai-organizer-model-badge-empty");
+			this.modelBadge.removeClass("ai-pulse-model-badge-empty");
 		}
 	}
 
@@ -267,7 +267,7 @@ export class ChatView extends ItemView {
 			const onChunk = (chunk: string): void => {
 				if (currentBubble !== null) {
 					// Remove the loading indicator on first chunk
-					const loadingIcon = currentBubble.querySelector(".ai-organizer-loading-icon");
+					const loadingIcon = currentBubble.querySelector(".ai-pulse-loading-icon");
 					if (loadingIcon !== null) {
 						loadingIcon.remove();
 					}
@@ -307,8 +307,8 @@ export class ChatView extends ItemView {
 		} catch (err: unknown) {
 			// Finalize bubble even on error
 			if (currentBubble !== null) {
-				(currentBubble as HTMLDivElement).removeClass("ai-organizer-streaming");
-				const errorIcon = (currentBubble as HTMLDivElement).querySelector(".ai-organizer-loading-icon");
+				(currentBubble as HTMLDivElement).removeClass("ai-pulse-streaming");
+				const errorIcon = (currentBubble as HTMLDivElement).querySelector(".ai-pulse-loading-icon");
 				if (errorIcon !== null) {
 					errorIcon.remove();
 				}
@@ -337,10 +337,10 @@ export class ChatView extends ItemView {
 			throw new Error("Message container not initialized.");
 		}
 		const bubble = this.messageContainer.createDiv({
-			cls: "ai-organizer-message assistant ai-organizer-streaming",
+			cls: "ai-pulse-message assistant ai-pulse-streaming",
 		});
 		// Add a loading indicator icon
-		const iconSpan = bubble.createSpan({ cls: "ai-organizer-loading-icon" });
+		const iconSpan = bubble.createSpan({ cls: "ai-pulse-loading-icon" });
 		setIcon(iconSpan, "more-horizontal");
 		return bubble;
 	}
@@ -350,10 +350,10 @@ export class ChatView extends ItemView {
 	 * and clean up the accumulated content tracker.
 	 */
 	private async finalizeBubble(bubble: HTMLDivElement): Promise<void> {
-		bubble.removeClass("ai-organizer-streaming");
+		bubble.removeClass("ai-pulse-streaming");
 
 		// Remove loading icon if still present
-		const loadingIcon = bubble.querySelector(".ai-organizer-loading-icon");
+		const loadingIcon = bubble.querySelector(".ai-pulse-loading-icon");
 		if (loadingIcon !== null) {
 			loadingIcon.remove();
 		}
@@ -369,8 +369,8 @@ export class ChatView extends ItemView {
 
 		// Replace plain text with rendered markdown
 		bubble.empty();
-		bubble.removeClass("ai-organizer-streaming-text");
-		bubble.addClass("ai-organizer-markdown");
+		bubble.removeClass("ai-pulse-streaming-text");
+		bubble.addClass("ai-pulse-markdown");
 		await MarkdownRenderer.render(
 			this.plugin.app,
 			rawText,
@@ -400,8 +400,8 @@ export class ChatView extends ItemView {
 
 		const cls =
 			role === "error"
-				? "ai-organizer-message assistant error"
-				: `ai-organizer-message ${role}`;
+				? "ai-pulse-message assistant error"
+				: `ai-pulse-message ${role}`;
 
 		this.messageContainer.createDiv({ cls, text: content });
 	}
@@ -411,32 +411,32 @@ export class ChatView extends ItemView {
 			return;
 		}
 
-		const container = this.messageContainer.createDiv({ cls: "ai-organizer-tool-call" });
+		const container = this.messageContainer.createDiv({ cls: "ai-pulse-tool-call" });
 
-		const header = container.createDiv({ cls: "ai-organizer-tool-call-header" });
-		setIcon(header.createSpan({ cls: "ai-organizer-tool-call-icon" }), "wrench");
-		header.createSpan({ text: event.friendlyName, cls: "ai-organizer-tool-call-name" });
+		const header = container.createDiv({ cls: "ai-pulse-tool-call-header" });
+		setIcon(header.createSpan({ cls: "ai-pulse-tool-call-icon" }), "wrench");
+		header.createSpan({ text: event.friendlyName, cls: "ai-pulse-tool-call-name" });
 
-		container.createDiv({ text: event.summary, cls: "ai-organizer-tool-call-summary" });
-		container.createDiv({ text: event.resultSummary, cls: "ai-organizer-tool-call-result-summary" });
+		container.createDiv({ text: event.summary, cls: "ai-pulse-tool-call-summary" });
+		container.createDiv({ text: event.resultSummary, cls: "ai-pulse-tool-call-result-summary" });
 
 		// DaisyUI-style collapse with checkbox
-		const collapse = container.createDiv({ cls: "ai-organizer-collapse ai-organizer-collapse-arrow" });
+		const collapse = container.createDiv({ cls: "ai-pulse-collapse ai-pulse-collapse-arrow" });
 		const collapseId = `tool-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 		const checkbox = collapse.createEl("input", {
 			type: "checkbox",
 			attr: { id: collapseId },
 		});
-		checkbox.addClass("ai-organizer-collapse-toggle");
+		checkbox.addClass("ai-pulse-collapse-toggle");
 		const titleEl = collapse.createEl("label", {
-			cls: "ai-organizer-collapse-title",
+			cls: "ai-pulse-collapse-title",
 			attr: { for: collapseId },
 			text: "Details",
 		});
 		void titleEl; // suppress unused warning
 
-		const collapseContent = collapse.createDiv({ cls: "ai-organizer-collapse-content" });
-		const contentInner = collapseContent.createDiv({ cls: "ai-organizer-collapse-content-inner" });
+		const collapseContent = collapse.createDiv({ cls: "ai-pulse-collapse-content" });
+		const contentInner = collapseContent.createDiv({ cls: "ai-pulse-collapse-content-inner" });
 
 		if (event.toolName === "edit_file") {
 			// For edit_file, show old_text / new_text in dedicated labeled blocks
@@ -445,28 +445,28 @@ export class ChatView extends ItemView {
 			const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
 
 			if (filePath !== "") {
-				contentInner.createEl("div", { text: `File: ${filePath}`, cls: "ai-organizer-tool-call-label" });
+				contentInner.createEl("div", { text: `File: ${filePath}`, cls: "ai-pulse-tool-call-label" });
 			}
 
-			contentInner.createEl("div", { text: "Old text:", cls: "ai-organizer-tool-call-label" });
+			contentInner.createEl("div", { text: "Old text:", cls: "ai-pulse-tool-call-label" });
 			contentInner.createEl("pre", {
 				text: oldText === "" ? "(empty — new file)" : oldText,
-				cls: "ai-organizer-tool-call-args",
+				cls: "ai-pulse-tool-call-args",
 			});
 
-			contentInner.createEl("div", { text: "New text:", cls: "ai-organizer-tool-call-label" });
+			contentInner.createEl("div", { text: "New text:", cls: "ai-pulse-tool-call-label" });
 			contentInner.createEl("pre", {
 				text: newText,
-				cls: "ai-organizer-tool-call-result",
+				cls: "ai-pulse-tool-call-result",
 			});
 		} else {
 			const argsStr = JSON.stringify(event.args, null, 2);
-			contentInner.createEl("pre", { text: argsStr, cls: "ai-organizer-tool-call-args" });
+			contentInner.createEl("pre", { text: argsStr, cls: "ai-pulse-tool-call-args" });
 
 			const resultPreview = event.result.length > 500
 				? event.result.substring(0, 500) + "..."
 				: event.result;
-			contentInner.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
+			contentInner.createEl("pre", { text: resultPreview, cls: "ai-pulse-tool-call-result" });
 		}
 	}
 
@@ -477,78 +477,78 @@ export class ChatView extends ItemView {
 				return;
 			}
 
-			const container = this.messageContainer.createDiv({ cls: "ai-organizer-approval" });
+			const container = this.messageContainer.createDiv({ cls: "ai-pulse-approval" });
 
-			const header = container.createDiv({ cls: "ai-organizer-approval-header" });
-			setIcon(header.createSpan({ cls: "ai-organizer-approval-icon" }), "shield-alert");
-			header.createSpan({ text: event.friendlyName, cls: "ai-organizer-approval-name" });
+			const header = container.createDiv({ cls: "ai-pulse-approval-header" });
+			setIcon(header.createSpan({ cls: "ai-pulse-approval-icon" }), "shield-alert");
+			header.createSpan({ text: event.friendlyName, cls: "ai-pulse-approval-name" });
 
-			container.createDiv({ text: event.message, cls: "ai-organizer-approval-message" });
+			container.createDiv({ text: event.message, cls: "ai-pulse-approval-message" });
 
 			// Show details for edit_file so the user can review the change
 			if (event.toolName === "edit_file" || event.toolName === "create_file") {
-				const collapse = container.createDiv({ cls: "ai-organizer-collapse ai-organizer-collapse-arrow" });
+				const collapse = container.createDiv({ cls: "ai-pulse-collapse ai-pulse-collapse-arrow" });
 				const collapseId = `approval-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 				const checkbox = collapse.createEl("input", {
 					type: "checkbox",
 					attr: { id: collapseId, checked: "" },
 				});
-				checkbox.addClass("ai-organizer-collapse-toggle");
+				checkbox.addClass("ai-pulse-collapse-toggle");
 				checkbox.checked = true;
 				const titleEl = collapse.createEl("label", {
-					cls: "ai-organizer-collapse-title",
+					cls: "ai-pulse-collapse-title",
 					attr: { for: collapseId },
 					text: event.toolName === "create_file" ? "Review content" : "Review changes",
 				});
 				void titleEl;
 
-				const collapseContent = collapse.createDiv({ cls: "ai-organizer-collapse-content" });
-				const contentInner = collapseContent.createDiv({ cls: "ai-organizer-collapse-content-inner" });
+				const collapseContent = collapse.createDiv({ cls: "ai-pulse-collapse-content" });
+				const contentInner = collapseContent.createDiv({ cls: "ai-pulse-collapse-content-inner" });
 
 				if (event.toolName === "edit_file") {
 					const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
 					const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
 
-					contentInner.createEl("div", { text: "Old text:", cls: "ai-organizer-tool-call-label" });
+					contentInner.createEl("div", { text: "Old text:", cls: "ai-pulse-tool-call-label" });
 					contentInner.createEl("pre", {
 						text: oldText === "" ? "(empty \u2014 new file)" : oldText,
-						cls: "ai-organizer-tool-call-args",
+						cls: "ai-pulse-tool-call-args",
 					});
 
-					contentInner.createEl("div", { text: "New text:", cls: "ai-organizer-tool-call-label" });
+					contentInner.createEl("div", { text: "New text:", cls: "ai-pulse-tool-call-label" });
 					contentInner.createEl("pre", {
 						text: newText,
-						cls: "ai-organizer-tool-call-result",
+						cls: "ai-pulse-tool-call-result",
 					});
 				} else {
 					// create_file
 					const content = typeof event.args.content === "string" ? event.args.content : "";
 
-					contentInner.createEl("div", { text: "Content:", cls: "ai-organizer-tool-call-label" });
+					contentInner.createEl("div", { text: "Content:", cls: "ai-pulse-tool-call-label" });
 					contentInner.createEl("pre", {
 						text: content === "" ? "(empty file)" : content,
-						cls: "ai-organizer-tool-call-result",
+						cls: "ai-pulse-tool-call-result",
 					});
 				}
 			}
 
-			const buttonRow = container.createDiv({ cls: "ai-organizer-approval-buttons" });
+			const buttonRow = container.createDiv({ cls: "ai-pulse-approval-buttons" });
 
 			const approveBtn = buttonRow.createEl("button", {
 				text: "Approve",
-				cls: "ai-organizer-approval-approve",
+				cls: "ai-pulse-approval-approve",
 			});
 
 			const declineBtn = buttonRow.createEl("button", {
 				text: "Decline",
-				cls: "ai-organizer-approval-decline",
+				cls: "ai-pulse-approval-decline",
 			});
 
 			const finalize = (approved: boolean): void => {
 				approveBtn.disabled = true;
 				declineBtn.disabled = true;
-				container.addClass(approved ? "ai-organizer-approval-approved" : "ai-organizer-approval-declined");
-				const statusEl = container.createDiv({ cls: "ai-organizer-approval-status" });
+				container.addClass(approved ? "ai-pulse-approval-approved" : "ai-pulse-approval-declined");
+				const statusEl = container.createDiv({ cls: "ai-pulse-approval-status" });
 				statusEl.setText(approved ? "Approved" : "Declined");
 				this.scrollToBottom();
 				resolve(approved);
@@ -581,7 +581,7 @@ export class ChatView extends ItemView {
 		}
 		if (this.sendButton !== null) {
 			this.sendButton.textContent = streaming ? "Stop" : "Send";
-			this.sendButton.toggleClass("ai-organizer-stop-btn", streaming);
+			this.sendButton.toggleClass("ai-pulse-stop-btn", streaming);
 		}
 	}
 }

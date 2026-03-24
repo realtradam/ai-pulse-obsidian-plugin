@@ -1,11 +1,11 @@
 import { Modal, Setting } from "obsidian";
-import type AIOrganizer from "./main";
+import type AIPulse from "./main";
 import { TOOL_REGISTRY } from "./tools";
 
 export class ToolModal extends Modal {
-	private plugin: AIOrganizer;
+	private plugin: AIPulse;
 
-	constructor(plugin: AIOrganizer) {
+	constructor(plugin: AIPulse) {
 		super(plugin.app);
 		this.plugin = plugin;
 	}
@@ -13,13 +13,13 @@ export class ToolModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass("ai-organizer-tool-modal");
+		contentEl.addClass("ai-pulse-tool-modal");
 
 		this.setTitle("AI Tools");
 
 		contentEl.createEl("p", {
 			text: "Enable tools to give the AI access to your vault. Changes take effect on the next message.",
-			cls: "ai-organizer-tool-modal-desc",
+			cls: "ai-pulse-tool-modal-desc",
 		});
 
 		for (const tool of TOOL_REGISTRY) {

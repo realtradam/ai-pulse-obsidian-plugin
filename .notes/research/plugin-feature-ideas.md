@@ -1,6 +1,6 @@
 # Plugin Feature Ideas
 
-Ideas for the AI Note Organizer plugin, drawn from the Obsidian and Ollama APIs.
+Ideas for the AI Pulse plugin, drawn from the Obsidian and Ollama APIs.
 
 ---
 
