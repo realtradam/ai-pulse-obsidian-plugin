@@ -115,6 +115,61 @@ async function executeDeleteFile(app: App, args: Record<string, unknown>): Promi
 }
 
 /**
+ * Execute the "get_current_note" tool.
+ * Returns the vault-relative path of the currently active note.
+ */
+async function executeGetCurrentNote(app: App, _args: Record<string, unknown>): Promise<string> {
+	const file = app.workspace.getActiveFile();
+	if (file === null) {
+		return "Error: No note is currently open.";
+	}
+	return file.path;
+}
+
+/**
+ * Execute the "edit_file" tool.
+ * Performs a find-and-replace on the file content using vault.process() for atomicity.
+ */
+async function executeEditFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const oldText = typeof args.old_text === "string" ? args.old_text : "";
+	const newText = typeof args.new_text === "string" ? args.new_text : "";
+
+	if (oldText === "") {
+		return "Error: old_text parameter is required and cannot be empty.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	try {
+		let replaced = false;
+		await app.vault.process(file, (data) => {
+			if (!data.includes(oldText)) {
+				return data;
+			}
+			replaced = true;
+			return data.replace(oldText, newText);
+		});
+
+		if (!replaced) {
+			return `Error: The specified old_text was not found in "${filePath}".`;
+		}
+
+		return `Successfully edited "${filePath}".`;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : "Unknown error";
+		return `Error editing file: ${msg}`;
+	}
+}
+
+/**
  * All available tools for the plugin.
  */
 export const TOOL_REGISTRY: ToolEntry[] = [
@@ -234,6 +289,83 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			},
 		},
 		execute: executeDeleteFile,
+	},
+	{
+		id: "get_current_note",
+		label: "Get Current Note",
+		description: "Get the file path of the currently open note.",
+		friendlyName: "Get Current Note",
+		requiresApproval: false,
+		summarize: () => "Checking active note",
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
+			return `"/${result}"`;
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "get_current_note",
+				description: "Get the vault-relative file path of the note currently open in the editor. Use this to find out which note the user is looking at. Returns an exact path that can be used with read_file or edit_file.",
+				parameters: {
+					type: "object",
+					required: [],
+					properties: {},
+				},
+			},
+		},
+		execute: executeGetCurrentNote,
+	},
+	{
+		id: "edit_file",
+		label: "Edit File",
+		description: "Find and replace text in a vault file (requires approval).",
+		friendlyName: "Edit File",
+		requiresApproval: true,
+		approvalMessage: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			return `Edit "${filePath}"?`;
+		},
+		summarize: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			return `"/${filePath}"`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
+			if (result.includes("declined")) {
+				return "Declined by user";
+			}
+			return "File edited";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "edit_file",
+				description: "Edit a file in the Obsidian vault by finding and replacing text. Provide the exact text to find (old_text) and the replacement (new_text). The old_text must match exactly as it appears in the file, including whitespace and newlines. Only the first occurrence is replaced. The file_path must be an exact path as returned by search_files or get_current_note. This action requires user approval.",
+				parameters: {
+					type: "object",
+					required: ["file_path", "old_text", "new_text"],
+					properties: {
+						file_path: {
+							type: "string",
+							description: "The vault-relative path to the file (e.g. 'folder/note.md').",
+						},
+						old_text: {
+							type: "string",
+							description: "The exact text to find in the file. Must match exactly including whitespace.",
+						},
+						new_text: {
+							type: "string",
+							description: "The text to replace old_text with. Use an empty string to delete the matched text.",
+						},
+					},
+				},
+			},
+		},
+		execute: executeEditFile,
 	},
 ];
 

@@ -1,4 +1,4 @@
-import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type AIOrganizer from "./main";
 import type { ChatMessage, ToolCallEvent, ApprovalRequestEvent } from "./ollama-client";
 import { sendChatMessageStreaming } from "./ollama-client";
@@ -18,6 +18,7 @@ export class ChatView extends ItemView {
 	private toolsButton: HTMLButtonElement | null = null;
 	private abortController: AbortController | null = null;
 	private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private bubbleContent: Map<HTMLDivElement, string> = new Map();
 
 	constructor(leaf: WorkspaceLeaf, plugin: AIOrganizer) {
 		super(leaf);
@@ -98,6 +99,7 @@ export class ChatView extends ItemView {
 		setIcon(clearBtn, "trash-2");
 		clearBtn.addEventListener("click", () => {
 			this.messages = [];
+			this.bubbleContent.clear();
 			if (this.messageContainer !== null) {
 				this.messageContainer.empty();
 			}
@@ -138,6 +140,7 @@ export class ChatView extends ItemView {
 		}
 		this.contentEl.empty();
 		this.messages = [];
+		this.bubbleContent.clear();
 		this.messageContainer = null;
 		this.textarea = null;
 		this.sendButton = null;
@@ -208,6 +211,7 @@ export class ChatView extends ItemView {
 				// Remove the empty streaming bubble since the approval
 				// prompt is now the active UI element
 				if (currentBubble !== null && currentBubble.textContent?.trim() === "") {
+					this.bubbleContent.delete(currentBubble);
 					currentBubble.remove();
 					currentBubble = null;
 				}
@@ -217,11 +221,7 @@ export class ChatView extends ItemView {
 			const onCreateBubble = (): void => {
 				// Finalize any previous bubble before creating a new one
 				if (currentBubble !== null) {
-					currentBubble.removeClass("ai-organizer-streaming");
-					// Remove empty bubbles from tool-only rounds
-					if (currentBubble.textContent?.trim() === "") {
-						currentBubble.remove();
-					}
+					void this.finalizeBubble(currentBubble);
 				}
 				currentBubble = this.createStreamingBubble();
 			};
@@ -233,6 +233,9 @@ export class ChatView extends ItemView {
 					if (loadingIcon !== null) {
 						loadingIcon.remove();
 					}
+					// Accumulate raw text for later markdown rendering
+					const prev = this.bubbleContent.get(currentBubble) ?? "";
+					this.bubbleContent.set(currentBubble, prev + chunk);
 					currentBubble.appendText(chunk);
 					this.debouncedScrollToBottom();
 				}
@@ -258,16 +261,7 @@ export class ChatView extends ItemView {
 
 			// Finalize the last streaming bubble
 			if (currentBubble !== null) {
-				(currentBubble as HTMLDivElement).removeClass("ai-organizer-streaming");
-				// Remove loading icon if still present
-				const remainingIcon = (currentBubble as HTMLDivElement).querySelector(".ai-organizer-loading-icon");
-				if (remainingIcon !== null) {
-					remainingIcon.remove();
-				}
-				// Remove empty assistant bubbles (e.g., tool-only rounds with no content)
-				if ((currentBubble as HTMLDivElement).textContent?.trim() === "") {
-					(currentBubble as HTMLDivElement).remove();
-				}
+				await this.finalizeBubble(currentBubble as HTMLDivElement);
 			}
 			this.messages.push({ role: "assistant", content: response });
 			this.scrollToBottom();
@@ -283,6 +277,7 @@ export class ChatView extends ItemView {
 				if ((currentBubble as HTMLDivElement).textContent?.trim() === "") {
 					(currentBubble as HTMLDivElement).remove();
 				}
+				this.bubbleContent.delete(currentBubble as HTMLDivElement);
 			}
 
 			const errMsg = err instanceof Error ? err.message : "Unknown error.";
@@ -309,6 +304,42 @@ export class ChatView extends ItemView {
 		const iconSpan = bubble.createSpan({ cls: "ai-organizer-loading-icon" });
 		setIcon(iconSpan, "more-horizontal");
 		return bubble;
+	}
+
+	/**
+	 * Finalize a streaming bubble: remove streaming state, render markdown,
+	 * and clean up the accumulated content tracker.
+	 */
+	private async finalizeBubble(bubble: HTMLDivElement): Promise<void> {
+		bubble.removeClass("ai-organizer-streaming");
+
+		// Remove loading icon if still present
+		const loadingIcon = bubble.querySelector(".ai-organizer-loading-icon");
+		if (loadingIcon !== null) {
+			loadingIcon.remove();
+		}
+
+		const rawText = this.bubbleContent.get(bubble) ?? "";
+		this.bubbleContent.delete(bubble);
+
+		// Remove empty bubbles (e.g., tool-only rounds with no content)
+		if (rawText.trim() === "") {
+			bubble.remove();
+			return;
+		}
+
+		// Replace plain text with rendered markdown
+		bubble.empty();
+		bubble.removeClass("ai-organizer-streaming-text");
+		bubble.addClass("ai-organizer-markdown");
+		await MarkdownRenderer.render(
+			this.plugin.app,
+			rawText,
+			bubble,
+			"",
+			this,
+		);
+		this.scrollToBottom();
 	}
 
 	private appendMessage(role: "user" | "assistant" | "error", content: string): void {

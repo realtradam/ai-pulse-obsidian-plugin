@@ -78,9 +78,10 @@ interface AgentLoopOptions {
 const TOOL_SYSTEM_PROMPT =
 	"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
 	"When you use the search_files tool, the results contain exact file paths. " +
-	"You MUST use these exact paths when calling read_file or referencing files. " +
-	"NEVER guess or modify file paths \u2014 always use the paths returned by search_files verbatim. " +
-	"Some tools (such as delete_file) require user approval before they execute. " +
+	"You MUST use these exact paths when calling read_file, edit_file, or referencing files. " +
+	"NEVER guess or modify file paths \u2014 always use the paths returned by search_files or get_current_note verbatim. " +
+	"When the user asks you to edit the note they are currently viewing, use get_current_note first to obtain the path, then read_file to see its content, then edit_file to make changes. " +
+	"Some tools (such as delete_file and edit_file) require user approval before they execute. " +
 	"If the user declines an action, ask them why so you can better assist them.";
 
 /**
