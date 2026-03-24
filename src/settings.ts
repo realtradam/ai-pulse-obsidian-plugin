@@ -9,6 +9,8 @@ export interface AIPulseSettings {
 	numPredict: number;
 	useSystemPromptFile: boolean;
 	systemPromptFile: string;
+	injectVaultContext: boolean;
+	vaultContextRecentFiles: number;
 }
 
 export const DEFAULT_SETTINGS: AIPulseSettings = {
@@ -20,4 +22,6 @@ export const DEFAULT_SETTINGS: AIPulseSettings = {
 	numPredict: -1,
 	useSystemPromptFile: false,
 	systemPromptFile: "agent.md",
+	injectVaultContext: false,
+	vaultContextRecentFiles: 20,
 };

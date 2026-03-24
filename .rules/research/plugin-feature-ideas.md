@@ -13,11 +13,11 @@ Use Ollama's `/api/embed` endpoint to generate vector embeddings for vault notes
 **APIs**: Ollama `/api/embed`, Dexie (IndexedDB), cosine similarity
 **Why**: Massive upgrade over `grep_search` — the AI can find conceptually related notes even when wording differs.
 
-### 2. Frontmatter Management Tool
+### 2. Frontmatter Management Tool ✅ IMPLEMENTED
 
-A `set_frontmatter` tool using `app.fileManager.processFrontMatter()` to let the AI add/update tags, aliases, categories, dates, etc. Atomic read-modify-save on the YAML block.
+A `set_frontmatter` tool using `app.fileManager.processFrontMatter()` to let the AI add/update tags, aliases, categories, dates, etc. Atomic read-modify-save on the YAML block. The `read_file` tool also automatically includes parsed frontmatter as JSON.
 
-**APIs**: `FileManager.processFrontMatter(file, fn)`
+**APIs**: `FileManager.processFrontMatter(file, fn)`, `metadataCache.getFileCache()`
 **Why**: Much safer than `edit_file` for metadata operations. No risk of breaking YAML formatting.
 
 ### 3. Auto-Process on File Creation
@@ -27,9 +27,9 @@ When a new note is created, automatically queue it for AI processing (tagging, l
 **APIs**: `vault.on('create')`, `workspace.onLayoutReady()` (to skip initial load events)
 **Why**: This is the core "organizer" part of the plugin. Makes the AI proactive rather than reactive.
 
-### 4. Vault Context Injection
+### 4. Vault Context Injection ✅ IMPLEMENTED
 
-Before each message, automatically inject a summary of the vault structure (folder tree, tag taxonomy, recent files) so the AI understands the vault without needing to search first.
+Before each message, automatically inject a summary of the vault structure (folder tree, tag taxonomy, recent files) so the AI understands the vault without needing to search first. Togglable in settings with configurable recent files count.
 
 **APIs**: `metadataCache` (tags, links, headings, frontmatter), `vault.getAllFolders()`, `vault.getMarkdownFiles()`
 **Why**: Gives the AI immediate awareness of the vault. Cheap to compute from the metadata cache.
@@ -97,3 +97,17 @@ Let users configure different models for different tasks (e.g. a small fast mode
 
 **APIs**: Ollama `/api/tags` (list models), settings UI
 **Why**: Optimizes speed and quality per task. Embedding models are tiny and fast; chat models can be large.
+
+### 13. Vision Preprocessing (Image-to-Text)
+
+When a user attaches an image to a chat message, send it to a vision model (e.g. `moondream`, `llava`, `llama3.2-vision`) in a standalone request asking it to describe everything visible — objects, text, numbers, layout. The text summary is then injected into the main conversation as context, replacing the raw image.
+
+**Flow**:
+1. User attaches an image (from vault or clipboard)
+2. Plugin reads the image binary, base64-encodes it
+3. Standalone `/api/chat` request to the vision model with `images` field: "Describe everything you see in this image, including all text and numbers."
+4. Vision model response (~100 tokens) is injected into the conversation as `[Image description: ...]`
+5. Main chat model processes the text description as normal
+
+**APIs**: Ollama `/api/chat` with `images` field, `vault.readBinary()`, base64 encoding
+**Why**: Raw base64 images consume massive context (~1.3MB for a 1MB image). Preprocessing shrinks this to a small paragraph while preserving all useful information. Also enables non-vision chat models to reason about images. Pairs naturally with multi-model support (idea #12) — configure a dedicated small/fast vision model separately from the main chat model.

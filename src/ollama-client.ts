@@ -68,6 +68,7 @@ interface AgentLoopOptions {
 	tools?: OllamaToolDefinition[];
 	app?: App;
 	userSystemPrompt?: string;
+	vaultContext?: string;
 	onToolCall?: (event: ToolCallEvent) => void;
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
 	sendRequest: ChatRequestStrategy;
@@ -108,6 +109,12 @@ const TOOL_SYSTEM_PROMPT =
 	"SEARCHING FILE CONTENTS:\n" +
 	"Use grep_search to find text inside file contents (like grep). " +
 	"Use search_files to find files by name/path. Use grep_search to find files containing specific text.\n\n" +
+	"FRONTMATTER MANAGEMENT:\n" +
+	"When you read a file with read_file, its YAML frontmatter is automatically included as a parsed JSON block at the top of the output. " +
+	"Use set_frontmatter to add, update, or remove frontmatter properties (tags, aliases, categories, etc.). " +
+	"set_frontmatter is MUCH safer than edit_file for metadata changes \u2014 it preserves YAML formatting. " +
+	"ALWAYS prefer set_frontmatter over edit_file when modifying tags, aliases, or other frontmatter fields. " +
+	"RECOMMENDED: Read the file first to see existing frontmatter before calling set_frontmatter.\n\n" +
 	"Some tools (such as delete_file, edit_file, create_file, and move_file) require user approval before they execute. " +
 	"If the user declines an action, ask them why so you can better assist them.";
 
@@ -117,20 +124,24 @@ const TOOL_SYSTEM_PROMPT =
  * text response or the iteration cap is reached.
  */
 async function chatAgentLoop(opts: AgentLoopOptions): Promise<string> {
-	const { messages, tools, app, userSystemPrompt, onToolCall, onApprovalRequest, sendRequest } = opts;
+	const { messages, tools, app, userSystemPrompt, vaultContext, onToolCall, onApprovalRequest, sendRequest } = opts;
 	const maxIterations = 10;
 	let iterations = 0;
 
 	const workingMessages = messages.map((m) => ({ ...m }));
 
-	// Build combined system prompt from tool instructions + user custom prompt
+	// Build combined system prompt from tool instructions + vault context + user custom prompt
 	const hasTools = tools !== undefined && tools.length > 0;
 	const hasUserPrompt = userSystemPrompt !== undefined && userSystemPrompt.trim() !== "";
+	const hasVaultContext = vaultContext !== undefined && vaultContext.trim() !== "";
 
-	if (hasTools || hasUserPrompt) {
+	if (hasTools || hasUserPrompt || hasVaultContext) {
 		const parts: string[] = [];
 		if (hasTools) {
 			parts.push(TOOL_SYSTEM_PROMPT);
+		}
+		if (hasVaultContext) {
+			parts.push(vaultContext);
 		}
 		if (hasUserPrompt) {
 			parts.push("USER INSTRUCTIONS:\n" + userSystemPrompt.trim());
@@ -341,6 +352,7 @@ export async function sendChatMessage(
 	onToolCall?: (event: ToolCallEvent) => void,
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>,
 	userSystemPrompt?: string,
+	vaultContext?: string,
 ): Promise<string> {
 	const sendRequest: ChatRequestStrategy = async (workingMessages) => {
 		const body: Record<string, unknown> = {
@@ -384,6 +396,7 @@ export async function sendChatMessage(
 		tools,
 		app,
 		userSystemPrompt,
+		vaultContext,
 		onToolCall,
 		onApprovalRequest,
 		sendRequest,
@@ -405,6 +418,7 @@ export interface StreamingChatOptions {
 	app?: App;
 	options?: ModelOptions;
 	userSystemPrompt?: string;
+	vaultContext?: string;
 	onChunk: (text: string) => void;
 	onToolCall?: (event: ToolCallEvent) => void;
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
@@ -457,7 +471,7 @@ async function* readNdjsonStream(
 export async function sendChatMessageStreaming(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	const { ollamaUrl, model, tools, app, options, userSystemPrompt, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
+	const { ollamaUrl, model, tools, app, options, userSystemPrompt, vaultContext, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
 
 	const sendRequest: ChatRequestStrategy = Platform.isMobile
 		? buildMobileStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble)
@@ -468,6 +482,7 @@ export async function sendChatMessageStreaming(
 		tools,
 		app,
 		userSystemPrompt,
+		vaultContext,
 		onToolCall,
 		onApprovalRequest,
 		sendRequest,

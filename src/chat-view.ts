@@ -6,6 +6,7 @@ import { SettingsModal } from "./settings-modal";
 import { ToolModal } from "./tool-modal";
 import { TOOL_REGISTRY } from "./tools";
 import type { OllamaToolDefinition } from "./tools";
+import { collectVaultContext, formatVaultContext } from "./vault-context";
 
 export const VIEW_TYPE_CHAT = "ai-pulse-chat";
 
@@ -236,6 +237,16 @@ export class ChatView extends ItemView {
 			}
 		}
 
+		// Build vault context if enabled
+		let vaultContext: string | undefined;
+		if (this.plugin.settings.injectVaultContext) {
+			const ctx = collectVaultContext(
+				this.plugin.app,
+				this.plugin.settings.vaultContextRecentFiles,
+			);
+			vaultContext = formatVaultContext(ctx);
+		}
+
 		try {
 			const enabledTools = this.getEnabledTools();
 			const hasTools = enabledTools.length > 0;
@@ -291,6 +302,7 @@ export class ChatView extends ItemView {
 					num_predict: this.plugin.settings.numPredict,
 				},
 				userSystemPrompt,
+				vaultContext,
 				onChunk,
 				onToolCall: hasTools ? onToolCall : undefined,
 				onApprovalRequest: hasTools ? onApprovalRequest : undefined,
@@ -486,7 +498,7 @@ export class ChatView extends ItemView {
 			container.createDiv({ text: event.message, cls: "ai-pulse-approval-message" });
 
 			// Show details for edit_file so the user can review the change
-			if (event.toolName === "edit_file" || event.toolName === "create_file") {
+			if (event.toolName === "edit_file" || event.toolName === "create_file" || event.toolName === "set_frontmatter") {
 				const collapse = container.createDiv({ cls: "ai-pulse-collapse ai-pulse-collapse-arrow" });
 				const collapseId = `approval-collapse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 				const checkbox = collapse.createEl("input", {
@@ -498,7 +510,9 @@ export class ChatView extends ItemView {
 				const titleEl = collapse.createEl("label", {
 					cls: "ai-pulse-collapse-title",
 					attr: { for: collapseId },
-					text: event.toolName === "create_file" ? "Review content" : "Review changes",
+					text: event.toolName === "create_file" ? "Review content"
+						: event.toolName === "set_frontmatter" ? "Review properties"
+						: "Review changes",
 				});
 				void titleEl;
 
@@ -518,6 +532,17 @@ export class ChatView extends ItemView {
 					contentInner.createEl("div", { text: "New text:", cls: "ai-pulse-tool-call-label" });
 					contentInner.createEl("pre", {
 						text: newText,
+						cls: "ai-pulse-tool-call-result",
+					});
+				} else if (event.toolName === "set_frontmatter") {
+					const props = event.args.properties;
+					const propsStr = typeof props === "object" && props !== null
+						? JSON.stringify(props, null, 2)
+						: typeof props === "string" ? props : "{}";
+
+					contentInner.createEl("div", { text: "Properties to set:", cls: "ai-pulse-tool-call-label" });
+					contentInner.createEl("pre", {
+						text: propsStr,
 						cls: "ai-pulse-tool-call-result",
 					});
 				} else {

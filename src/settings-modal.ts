@@ -123,6 +123,60 @@ export class SettingsModal extends Modal {
 		// Set initial state
 		updateFileSettingState(this.plugin.settings.useSystemPromptFile);
 
+		// --- Vault Context ---
+
+		const ctxHeader = contentEl.createEl("h4", { text: "Vault Context" });
+		ctxHeader.style.marginTop = "16px";
+		ctxHeader.style.marginBottom = "4px";
+
+		// Recent files count (disabled/enabled based on toggle)
+		let recentFilesInputEl: HTMLInputElement | null = null;
+		const recentFilesSetting = new Setting(contentEl)
+			.setName("Recent Files Count")
+			.setDesc("Number of recently modified files to include in the context.")
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text.inputEl.min = "0";
+				text.inputEl.max = "100";
+				text.inputEl.step = "5";
+				text.setValue(String(this.plugin.settings.vaultContextRecentFiles));
+				text.onChange(async (value) => {
+					const num = parseInt(value, 10);
+					if (!isNaN(num) && num >= 0) {
+						this.plugin.settings.vaultContextRecentFiles = num;
+						await this.plugin.saveSettings();
+					}
+				});
+				text.inputEl.style.width = "60px";
+				recentFilesInputEl = text.inputEl;
+			});
+
+		const updateVaultContextState = (enabled: boolean): void => {
+			recentFilesSetting.settingEl.toggleClass("ai-pulse-setting-disabled", !enabled);
+			if (recentFilesInputEl !== null) {
+				recentFilesInputEl.disabled = !enabled;
+			}
+		};
+
+		const vaultContextToggle = new Setting(contentEl)
+			.setName("Inject Vault Context")
+			.setDesc("Automatically inject a summary of the vault (folders, tags, recent files) into each conversation.")
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.injectVaultContext)
+					.onChange(async (value) => {
+						this.plugin.settings.injectVaultContext = value;
+						await this.plugin.saveSettings();
+						updateVaultContextState(value);
+					});
+			});
+
+		// Move toggle above count in the DOM
+		contentEl.insertBefore(vaultContextToggle.settingEl, recentFilesSetting.settingEl);
+
+		// Set initial state
+		updateVaultContextState(this.plugin.settings.injectVaultContext);
+
 		// --- Generation Parameters ---
 
 		const paramHeader = contentEl.createEl("h4", { text: "Generation Parameters" });

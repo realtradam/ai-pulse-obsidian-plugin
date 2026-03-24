@@ -68,7 +68,8 @@ async function executeSearchFiles(app: App, args: Record<string, unknown>): Prom
 
 /**
  * Execute the "read_file" tool.
- * Returns the full text content of a file by its vault path.
+ * Returns the full text content of a file by its vault path,
+ * plus parsed frontmatter as a JSON block if present.
  */
 async function executeReadFile(app: App, args: Record<string, unknown>): Promise<string> {
 	const filePath = typeof args.file_path === "string" ? args.file_path : "";
@@ -83,6 +84,20 @@ async function executeReadFile(app: App, args: Record<string, unknown>): Promise
 
 	try {
 		const content = await app.vault.cachedRead(file);
+
+		// Include parsed frontmatter as JSON if available
+		const cache = app.metadataCache.getFileCache(file);
+		if (cache?.frontmatter !== undefined) {
+			const fm: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(cache.frontmatter)) {
+				if (key !== "position") {
+					fm[key] = value;
+				}
+			}
+			const fmJson = JSON.stringify(fm, null, 2);
+			return `--- FRONTMATTER (parsed) ---\n${fmJson}\n--- END FRONTMATTER ---\n\n--- FILE CONTENT ---\n${content}\n--- END FILE CONTENT ---`;
+		}
+
 		return content;
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : "Unknown error";
@@ -320,6 +335,77 @@ async function executeEditFile(app: App, args: Record<string, unknown>): Promise
 }
 
 /**
+ * Execute the "set_frontmatter" tool.
+ * Atomically sets or updates frontmatter properties using processFrontMatter().
+ * The `properties` argument is a JSON object whose keys are set/overwritten in the YAML block.
+ * To remove a property, set its value to null.
+ */
+async function executeSetFrontmatter(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	let properties = args.properties;
+
+	// The model may pass properties as a JSON string — parse it
+	if (typeof properties === "string") {
+		try {
+			properties = JSON.parse(properties) as unknown;
+		} catch {
+			return "Error: properties must be a valid JSON object. Failed to parse the string.";
+		}
+	}
+
+	if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
+		return "Error: properties must be a JSON object with key-value pairs.";
+	}
+
+	const propsObj = properties as Record<string, unknown>;
+	if (Object.keys(propsObj).length === 0) {
+		return "Error: properties object is empty. Provide at least one key to set.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	try {
+		const keysSet: string[] = [];
+		const keysRemoved: string[] = [];
+
+		await app.fileManager.processFrontMatter(file, (fm) => {
+			for (const [key, value] of Object.entries(propsObj)) {
+				if (value === null) {
+					// Remove the property
+					if (key in fm) {
+						delete fm[key];
+						keysRemoved.push(key);
+					}
+				} else {
+					fm[key] = value;
+					keysSet.push(key);
+				}
+			}
+		});
+
+		const parts: string[] = [];
+		if (keysSet.length > 0) {
+			parts.push(`Set: ${keysSet.join(", ")}`);
+		}
+		if (keysRemoved.length > 0) {
+			parts.push(`Removed: ${keysRemoved.join(", ")}`);
+		}
+
+		return `Frontmatter updated for "${filePath}". ${parts.join(". ")}.`;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : "Unknown error";
+		return `Error updating frontmatter: ${msg}`;
+	}
+}
+
+/**
  * All available tools for the plugin.
  */
 export const TOOL_REGISTRY: ToolEntry[] = [
@@ -383,7 +469,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			type: "function",
 			function: {
 				name: "read_file",
-				description: "Read the full text content of a file in the Obsidian vault. The file_path must be an exact path as returned by search_files.",
+				description: "Read the full text content of a file in the Obsidian vault. If the file has YAML frontmatter, it is also returned as a parsed JSON block at the top of the output. The file_path must be an exact path as returned by search_files.",
 				parameters: {
 					type: "object",
 					required: ["file_path"],
@@ -662,6 +748,67 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			},
 		},
 		execute: executeMoveFile,
+	},
+	{
+		id: "set_frontmatter",
+		label: "Set Frontmatter",
+		description: "Add or update YAML frontmatter properties (requires approval).",
+		friendlyName: "Set Frontmatter",
+		requiresApproval: true,
+		approvalMessage: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			const props = typeof args.properties === "object" && args.properties !== null
+				? Object.keys(args.properties as Record<string, unknown>)
+				: [];
+			return `Update frontmatter in "${filePath}"? Properties: ${props.join(", ")}`;
+		},
+		summarize: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			const props = typeof args.properties === "object" && args.properties !== null
+				? Object.keys(args.properties as Record<string, unknown>)
+				: [];
+			return `"/${filePath}" — ${props.join(", ")}`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
+			if (result.includes("declined")) {
+				return "Declined by user";
+			}
+			return "Frontmatter updated";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "set_frontmatter",
+				description: "Add or update YAML frontmatter properties on a note. " +
+					"Pass a JSON object of key-value pairs to set. " +
+					"Existing properties not mentioned are left unchanged. " +
+					"Set a value to null to remove that property. " +
+					"Use this for tags, aliases, categories, dates, or any custom metadata. " +
+					"For tags, use an array of strings (e.g. [\"ai\", \"research\"]). " +
+					"This is safer than edit_file for metadata changes because it preserves YAML formatting. " +
+					"RECOMMENDED: Call read_file first to see existing frontmatter before updating. " +
+					"The file_path must be an exact path from search_files or get_current_note. " +
+					"This action requires user approval.",
+				parameters: {
+					type: "object",
+					required: ["file_path", "properties"],
+					properties: {
+						file_path: {
+							type: "string",
+							description: "The vault-relative path to the file (e.g. 'folder/note.md').",
+						},
+						properties: {
+							type: "string",
+							description: 'A JSON object of frontmatter key-value pairs to set. Example: {"tags": ["ai", "research"], "category": "notes", "status": "draft"}. Set a value to null to remove that property.',
+						},
+					},
+				},
+			},
+		},
+		execute: executeSetFrontmatter,
 	},
 ];
 
