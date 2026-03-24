@@ -196,3 +196,10 @@
 	font-size: 0.9em;
 	margin-bottom: 8px;
 }
+
+
+.ai-organizer-stop-btn {
+	background-color: var(--text-error) !important;
+	color: var(--text-on-accent) !important;
+	border-color: var(--text-error) !important;
+}

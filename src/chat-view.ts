@@ -1,7 +1,7 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type AIOrganizer from "./main";
 import type { ChatMessage, ToolCallEvent } from "./ollama-client";
-import { sendChatMessage } from "./ollama-client";
+import { sendChatMessageStreaming } from "./ollama-client";
 import { SettingsModal } from "./settings-modal";
 import { ToolModal } from "./tool-modal";
 import { TOOL_REGISTRY } from "./tools";
@@ -16,6 +16,8 @@ export class ChatView extends ItemView {
 	private textarea: HTMLTextAreaElement | null = null;
 	private sendButton: HTMLButtonElement | null = null;
 	private toolsButton: HTMLButtonElement | null = null;
+	private abortController: AbortController | null = null;
+	private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: AIOrganizer) {
 		super(leaf);
@@ -86,6 +88,11 @@ export class ChatView extends ItemView {
 		});
 
 		this.sendButton.addEventListener("click", () => {
+			if (this.abortController !== null) {
+				// Currently streaming — abort
+				this.abortController.abort();
+				return;
+			}
 			void this.handleSend();
 		});
 
@@ -94,12 +101,16 @@ export class ChatView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		if (this.abortController !== null) {
+			this.abortController.abort();
+		}
 		this.contentEl.empty();
 		this.messages = [];
 		this.messageContainer = null;
 		this.textarea = null;
 		this.sendButton = null;
 		this.toolsButton = null;
+		this.abortController = null;
 	}
 
 	private getEnabledTools(): OllamaToolDefinition[] {
@@ -146,8 +157,12 @@ export class ChatView extends ItemView {
 		// Track in message history
 		this.messages.push({ role: "user", content: text });
 
-		// Disable input
-		this.setInputEnabled(false);
+		// Switch to streaming state
+		this.abortController = new AbortController();
+		this.setStreamingState(true);
+
+		// Create the assistant bubble for streaming into
+		const streamingBubble = this.createStreamingBubble();
 
 		try {
 			const enabledTools = this.getEnabledTools();
@@ -158,28 +173,50 @@ export class ChatView extends ItemView {
 				this.scrollToBottom();
 			};
 
-			const response = await sendChatMessage(
-				this.plugin.settings.ollamaUrl,
-				this.plugin.settings.model,
-				this.messages,
-				hasTools ? enabledTools : undefined,
-				hasTools ? this.plugin.app : undefined,
-				hasTools ? onToolCall : undefined,
-			);
+			const onChunk = (chunk: string): void => {
+				streamingBubble.textContent += chunk;
+				this.debouncedScrollToBottom();
+			};
 
+			const response = await sendChatMessageStreaming({
+				ollamaUrl: this.plugin.settings.ollamaUrl,
+				model: this.plugin.settings.model,
+				messages: this.messages,
+				tools: hasTools ? enabledTools : undefined,
+				app: hasTools ? this.plugin.app : undefined,
+				onChunk,
+				onToolCall: hasTools ? onToolCall : undefined,
+				abortSignal: this.abortController.signal,
+			});
+
+			// Finalize the streaming bubble
+			streamingBubble.removeClass("ai-organizer-streaming");
 			this.messages.push({ role: "assistant", content: response });
-			this.appendMessage("assistant", response);
 			this.scrollToBottom();
 		} catch (err: unknown) {
+			// Finalize bubble even on error
+			streamingBubble.removeClass("ai-organizer-streaming");
+
 			const errMsg = err instanceof Error ? err.message : "Unknown error.";
 			new Notice(errMsg);
 			this.appendMessage("error", `Error: ${errMsg}`);
 			this.scrollToBottom();
 		}
 
-		// Re-enable input
-		this.setInputEnabled(true);
+		// Restore normal state
+		this.abortController = null;
+		this.setStreamingState(false);
 		this.textarea.focus();
+	}
+
+	private createStreamingBubble(): HTMLDivElement {
+		if (this.messageContainer === null) {
+			// Should not happen, but satisfy TS
+			throw new Error("Message container not initialized.");
+		}
+		return this.messageContainer.createDiv({
+			cls: "ai-organizer-message assistant ai-organizer-streaming",
+		});
 	}
 
 	private appendMessage(role: "user" | "assistant" | "error", content: string): void {
@@ -227,13 +264,21 @@ export class ChatView extends ItemView {
 		}
 	}
 
-	private setInputEnabled(enabled: boolean): void {
+	private debouncedScrollToBottom(): void {
+		if (this.scrollDebounceTimer !== null) return;
+		this.scrollDebounceTimer = setTimeout(() => {
+			this.scrollDebounceTimer = null;
+			this.scrollToBottom();
+		}, 50);
+	}
+
+	private setStreamingState(streaming: boolean): void {
 		if (this.textarea !== null) {
-			this.textarea.disabled = !enabled;
+			this.textarea.disabled = streaming;
 		}
 		if (this.sendButton !== null) {
-			this.sendButton.disabled = !enabled;
-			this.sendButton.textContent = enabled ? "Send" : "...";
+			this.sendButton.textContent = streaming ? "Stop" : "Send";
+			this.sendButton.toggleClass("ai-organizer-stop-btn", streaming);
 		}
 	}
 }
