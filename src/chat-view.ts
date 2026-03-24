@@ -205,6 +205,12 @@ export class ChatView extends ItemView {
 			};
 
 			const onApprovalRequest = (event: ApprovalRequestEvent): Promise<boolean> => {
+				// Remove the empty streaming bubble since the approval
+				// prompt is now the active UI element
+				if (currentBubble !== null && currentBubble.textContent?.trim() === "") {
+					currentBubble.remove();
+					currentBubble = null;
+				}
 				return this.showApprovalRequest(event);
 			};
 

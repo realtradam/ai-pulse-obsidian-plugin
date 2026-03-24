@@ -28,6 +28,152 @@ export interface ToolCallEvent {
 	result: string;
 }
 
+/**
+ * Approval request event for tools that require user confirmation.
+ */
+export interface ApprovalRequestEvent {
+	toolName: string;
+	friendlyName: string;
+	message: string;
+	args: Record<string, unknown>;
+}
+
+export interface ModelOptions {
+	temperature?: number;
+	num_ctx?: number;
+	num_predict?: number;
+}
+
+/**
+ * Result returned by a chat request strategy.
+ */
+interface ChatRequestResult {
+	content: string;
+	toolCalls: ToolCallResponse[];
+}
+
+/**
+ * A strategy function that performs a single HTTP request to the Ollama chat API.
+ * Different implementations handle non-streaming, mobile fallback, and desktop streaming.
+ */
+type ChatRequestStrategy = (
+	workingMessages: ChatMessage[],
+) => Promise<ChatRequestResult>;
+
+/**
+ * Options for the shared agent loop.
+ */
+interface AgentLoopOptions {
+	messages: ChatMessage[];
+	tools?: OllamaToolDefinition[];
+	app?: App;
+	onToolCall?: (event: ToolCallEvent) => void;
+	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
+	sendRequest: ChatRequestStrategy;
+}
+
+/**
+ * System prompt injected when tools are available.
+ */
+const TOOL_SYSTEM_PROMPT =
+	"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
+	"When you use the search_files tool, the results contain exact file paths. " +
+	"You MUST use these exact paths when calling read_file or referencing files. " +
+	"NEVER guess or modify file paths \u2014 always use the paths returned by search_files verbatim. " +
+	"Some tools (such as delete_file) require user approval before they execute. " +
+	"If the user declines an action, ask them why so you can better assist them.";
+
+/**
+ * Shared agent loop: injects the system prompt, calls the strategy for each
+ * iteration, executes tool calls, and loops until the model returns a final
+ * text response or the iteration cap is reached.
+ */
+async function chatAgentLoop(opts: AgentLoopOptions): Promise<string> {
+	const { messages, tools, app, onToolCall, onApprovalRequest, sendRequest } = opts;
+	const maxIterations = 10;
+	let iterations = 0;
+
+	const workingMessages = messages.map((m) => ({ ...m }));
+
+	// Inject system prompt when tools are available
+	if (tools !== undefined && tools.length > 0) {
+		workingMessages.unshift({ role: "system", content: TOOL_SYSTEM_PROMPT });
+	}
+
+	while (iterations < maxIterations) {
+		iterations++;
+
+		const { content, toolCalls } = await sendRequest(workingMessages);
+
+		// No tool calls — return the final content
+		if (toolCalls.length === 0) {
+			return content;
+		}
+
+		// Append assistant message with tool_calls to working history
+		workingMessages.push({
+			role: "assistant",
+			content,
+			tool_calls: toolCalls,
+		});
+
+		if (app === undefined) {
+			throw new Error("App reference required for tool execution.");
+		}
+
+		// Execute each tool call and append results
+		for (const tc of toolCalls) {
+			const fnName = tc.function.name;
+			const fnArgs = tc.function.arguments;
+			const toolEntry = findToolByName(fnName);
+
+			let result: string;
+			if (toolEntry === undefined) {
+				result = `Error: Unknown tool "${fnName}".`;
+			} else if (toolEntry.requiresApproval) {
+				let approved = false;
+				if (onApprovalRequest !== undefined) {
+					const message = toolEntry.approvalMessage !== undefined
+						? toolEntry.approvalMessage(fnArgs)
+						: `Allow ${toolEntry.friendlyName}?`;
+					approved = await onApprovalRequest({
+						toolName: fnName,
+						friendlyName: toolEntry.friendlyName,
+						message,
+						args: fnArgs,
+					});
+				}
+				result = approved
+					? await toolEntry.execute(app, fnArgs)
+					: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
+			} else {
+				result = await toolEntry.execute(app, fnArgs);
+			}
+
+			if (onToolCall !== undefined) {
+				const friendlyName = toolEntry !== undefined ? toolEntry.friendlyName : fnName;
+				const summary = toolEntry !== undefined ? toolEntry.summarize(fnArgs) : `Called ${fnName}`;
+				const resultSummary = toolEntry !== undefined ? toolEntry.summarizeResult(result) : "";
+				onToolCall({ toolName: fnName, friendlyName, summary, resultSummary, args: fnArgs, result });
+			}
+
+			workingMessages.push({
+				role: "tool",
+				tool_name: fnName,
+				content: result,
+			});
+		}
+
+		// Loop continues — model sees tool results
+	}
+
+	throw new Error("Tool calling loop exceeded maximum iterations.");
+}
+
+// ---------------------------------------------------------------------------
+// Utility functions
+// ---------------------------------------------------------------------------
+
 export async function testConnection(ollamaUrl: string): Promise<string> {
 	try {
 		const response = await requestUrl({
@@ -119,8 +265,6 @@ export async function showModel(ollamaUrl: string, model: string): Promise<Model
 
 		const modelInfo = json.model_info as Record<string, unknown> | undefined;
 		if (modelInfo !== undefined && modelInfo !== null) {
-			// Look for context_length in model_info
-			// Keys are typically "<family>.context_length" e.g. "llama.context_length"
 			for (const key of Object.keys(modelInfo)) {
 				if (key.endsWith(".context_length") || key === "context_length") {
 					const val = modelInfo[key];
@@ -141,6 +285,10 @@ export async function showModel(ollamaUrl: string, model: string): Promise<Model
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Non-streaming chat (requestUrl, no UI callbacks)
+// ---------------------------------------------------------------------------
+
 /**
  * Send a chat message with optional tool-calling agent loop.
  * When tools are provided, the function handles the multi-turn tool
@@ -155,38 +303,18 @@ export async function sendChatMessage(
 	onToolCall?: (event: ToolCallEvent) => void,
 	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>,
 ): Promise<string> {
-	const maxIterations = 10;
-	let iterations = 0;
-
-	const workingMessages = messages.map((m) => ({ ...m }));
-
-	// Inject a system prompt when tools are available to guide the model
-	if (tools !== undefined && tools.length > 0) {
-		const systemPrompt: ChatMessage = {
-			role: "system",
-			content:
-				"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
-				"When you use the search_files tool, the results contain exact file paths. " +
-				"You MUST use these exact paths when calling read_file or referencing files. " +
-				"NEVER guess or modify file paths — always use the paths returned by search_files verbatim.",
+	const sendRequest: ChatRequestStrategy = async (workingMessages) => {
+		const body: Record<string, unknown> = {
+			model,
+			messages: workingMessages,
+			stream: false,
 		};
-		workingMessages.unshift(systemPrompt);
-	}
 
-	while (iterations < maxIterations) {
-		iterations++;
+		if (tools !== undefined && tools.length > 0) {
+			body.tools = tools;
+		}
 
 		try {
-			const body: Record<string, unknown> = {
-				model,
-				messages: workingMessages,
-				stream: false,
-			};
-
-			if (tools !== undefined && tools.length > 0) {
-				body.tools = tools;
-			}
-
 			const response = await requestUrl({
 				url: `${ollamaUrl}/api/chat`,
 				method: "POST",
@@ -203,93 +331,28 @@ export async function sendChatMessage(
 			const content = typeof msg.content === "string" ? msg.content : "";
 			const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls as ToolCallResponse[] : [];
 
-			// If no tool calls, return the final content
-			if (toolCalls.length === 0) {
-				return content;
-			}
-
-			// Append assistant message with tool_calls to working history
-			const assistantMsg: ChatMessage = {
-				role: "assistant",
-				content,
-				tool_calls: toolCalls,
-			};
-			workingMessages.push(assistantMsg);
-
-			// Execute each tool call and append results
-			if (app === undefined) {
-				throw new Error("App reference required for tool execution.");
-			}
-
-			for (const tc of toolCalls) {
-				const fnName = tc.function.name;
-				const fnArgs = tc.function.arguments;
-				const toolEntry = findToolByName(fnName);
-
-				let result: string;
-				if (toolEntry === undefined) {
-					result = `Error: Unknown tool "${fnName}".`;
-				} else if (toolEntry.requiresApproval) {
-					let approved = false;
-					if (onApprovalRequest !== undefined) {
-						const message = toolEntry.approvalMessage !== undefined
-							? toolEntry.approvalMessage(fnArgs)
-							: `Allow ${toolEntry.friendlyName}?`;
-						approved = await onApprovalRequest({
-							toolName: fnName,
-							friendlyName: toolEntry.friendlyName,
-							message,
-							args: fnArgs,
-						});
-					}
-					result = approved
-						? await toolEntry.execute(app, fnArgs)
-						: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
-				} else {
-					result = await toolEntry.execute(app, fnArgs);
-				}
-
-				if (onToolCall !== undefined) {
-					const friendlyName = toolEntry !== undefined ? toolEntry.friendlyName : fnName;
-					const summary = toolEntry !== undefined ? toolEntry.summarize(fnArgs) : `Called ${fnName}`;
-					const resultSummary = toolEntry !== undefined ? toolEntry.summarizeResult(result) : "";
-					onToolCall({ toolName: fnName, friendlyName, summary, resultSummary, args: fnArgs, result });
-				}
-
-				workingMessages.push({
-					role: "tool",
-					tool_name: fnName,
-					content: result,
-				});
-			}
-
-			// Loop continues — model sees tool results
+			return { content, toolCalls };
 		} catch (err: unknown) {
 			if (err instanceof Error) {
 				throw new Error(`Chat request failed: ${err.message}`);
 			}
 			throw new Error("Chat request failed: unknown error.");
 		}
-	}
+	};
 
-	throw new Error("Tool calling loop exceeded maximum iterations.");
+	return chatAgentLoop({
+		messages,
+		tools,
+		app,
+		onToolCall,
+		onApprovalRequest,
+		sendRequest,
+	});
 }
 
-/**
- * Approval request event for tools that require user confirmation.
- */
-export interface ApprovalRequestEvent {
-	toolName: string;
-	friendlyName: string;
-	message: string;
-	args: Record<string, unknown>;
-}
-
-export interface ModelOptions {
-	temperature?: number;
-	num_ctx?: number;
-	num_predict?: number;
-}
+// ---------------------------------------------------------------------------
+// Streaming chat
+// ---------------------------------------------------------------------------
 
 /**
  * Streaming chat options.
@@ -343,8 +406,7 @@ async function* readNdjsonStream(
 
 /**
  * Send a chat message with streaming.
- * Streams text chunks via onChunk callback. Supports tool-calling agent loop:
- * tool execution rounds are non-streamed, only the final text response streams.
+ * Streams text chunks via onChunk callback. Supports tool-calling agent loop.
  * Returns the full accumulated response text.
  *
  * On mobile platforms, falls back to non-streaming via Obsidian's requestUrl()
@@ -354,40 +416,36 @@ async function* readNdjsonStream(
 export async function sendChatMessageStreaming(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	if (Platform.isMobile) {
-		return sendChatMessageStreamingMobile(opts);
-	}
-	return sendChatMessageStreamingDesktop(opts);
+	const { ollamaUrl, model, tools, app, options, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
+
+	const sendRequest: ChatRequestStrategy = Platform.isMobile
+		? buildMobileStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble)
+		: buildDesktopStreamingStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble, abortSignal);
+
+	return chatAgentLoop({
+		messages: opts.messages,
+		tools,
+		app,
+		onToolCall,
+		onApprovalRequest,
+		sendRequest,
+	});
 }
 
 /**
- * Mobile fallback: uses Obsidian's requestUrl() (non-streaming) so the request
+ * Mobile strategy: uses Obsidian's requestUrl() (non-streaming) so the request
  * goes through the native networking layer and can reach localhost / LAN.
+ * Delivers the full response as a single chunk.
  */
-async function sendChatMessageStreamingMobile(
-	opts: StreamingChatOptions,
-): Promise<string> {
-	const { ollamaUrl, model, messages, tools, app, options, onChunk, onToolCall, onApprovalRequest, onCreateBubble } = opts;
-	const maxIterations = 10;
-	let iterations = 0;
-
-	const workingMessages = messages.map((m) => ({ ...m }));
-
-	if (tools !== undefined && tools.length > 0) {
-		const systemPrompt: ChatMessage = {
-			role: "system",
-			content:
-				"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
-				"When you use the search_files tool, the results contain exact file paths. " +
-				"You MUST use these exact paths when calling read_file or referencing files. " +
-				"NEVER guess or modify file paths — always use the paths returned by search_files verbatim.",
-		};
-		workingMessages.unshift(systemPrompt);
-	}
-
-	while (iterations < maxIterations) {
-		iterations++;
-
+function buildMobileStrategy(
+	ollamaUrl: string,
+	model: string,
+	tools: OllamaToolDefinition[] | undefined,
+	options: ModelOptions | undefined,
+	onChunk: (text: string) => void,
+	onCreateBubble: () => void,
+): ChatRequestStrategy {
+	return async (workingMessages) => {
 		onCreateBubble();
 
 		const body: Record<string, unknown> = {
@@ -421,67 +479,11 @@ async function sendChatMessageStreamingMobile(
 			const content = typeof msg.content === "string" ? msg.content : "";
 			const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls as ToolCallResponse[] : [];
 
-			// Deliver the full content as a single chunk to the UI
 			if (content !== "") {
 				onChunk(content);
 			}
 
-			if (toolCalls.length === 0) {
-				return content;
-			}
-
-			const assistantMsg: ChatMessage = {
-				role: "assistant",
-				content,
-				tool_calls: toolCalls,
-			};
-			workingMessages.push(assistantMsg);
-
-			if (app === undefined) {
-				throw new Error("App reference required for tool execution.");
-			}
-
-			for (const tc of toolCalls) {
-				const fnName = tc.function.name;
-				const fnArgs = tc.function.arguments;
-				const toolEntry = findToolByName(fnName);
-
-				let result: string;
-				if (toolEntry === undefined) {
-					result = `Error: Unknown tool "${fnName}".`;
-				} else if (toolEntry.requiresApproval) {
-					let approved = false;
-					if (onApprovalRequest !== undefined) {
-						const message = toolEntry.approvalMessage !== undefined
-							? toolEntry.approvalMessage(fnArgs)
-							: `Allow ${toolEntry.friendlyName}?`;
-						approved = await onApprovalRequest({
-							toolName: fnName,
-							friendlyName: toolEntry.friendlyName,
-							message,
-							args: fnArgs,
-						});
-					}
-					result = approved
-						? await toolEntry.execute(app, fnArgs)
-						: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
-				} else {
-					result = await toolEntry.execute(app, fnArgs);
-				}
-
-				if (onToolCall !== undefined) {
-					const friendlyName = toolEntry !== undefined ? toolEntry.friendlyName : fnName;
-					const summary = toolEntry !== undefined ? toolEntry.summarize(fnArgs) : `Called ${fnName}`;
-					const resultSummary = toolEntry !== undefined ? toolEntry.summarizeResult(result) : "";
-					onToolCall({ toolName: fnName, friendlyName, summary, resultSummary, args: fnArgs, result });
-				}
-
-				workingMessages.push({
-					role: "tool",
-					tool_name: fnName,
-					content: result,
-				});
-			}
+			return { content, toolCalls };
 		} catch (err: unknown) {
 			if (err instanceof Error) {
 				const msg = err.message.toLowerCase();
@@ -496,38 +498,22 @@ async function sendChatMessageStreamingMobile(
 			}
 			throw new Error("Chat request failed: unknown error.");
 		}
-	}
-
-	throw new Error("Tool calling loop exceeded maximum iterations.");
+	};
 }
 
 /**
- * Desktop streaming: uses native fetch() for real token-by-token streaming.
+ * Desktop streaming strategy: uses native fetch() for real token-by-token streaming.
  */
-async function sendChatMessageStreamingDesktop(
-	opts: StreamingChatOptions,
-): Promise<string> {
-	const { ollamaUrl, model, messages, tools, app, options, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
-	const maxIterations = 10;
-	let iterations = 0;
-
-	const workingMessages = messages.map((m) => ({ ...m }));
-
-	if (tools !== undefined && tools.length > 0) {
-		const systemPrompt: ChatMessage = {
-			role: "system",
-			content:
-				"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
-				"When you use the search_files tool, the results contain exact file paths. " +
-				"You MUST use these exact paths when calling read_file or referencing files. " +
-				"NEVER guess or modify file paths — always use the paths returned by search_files verbatim.",
-		};
-		workingMessages.unshift(systemPrompt);
-	}
-
-	while (iterations < maxIterations) {
-		iterations++;
-
+function buildDesktopStreamingStrategy(
+	ollamaUrl: string,
+	model: string,
+	tools: OllamaToolDefinition[] | undefined,
+	options: ModelOptions | undefined,
+	onChunk: (text: string) => void,
+	onCreateBubble: () => void,
+	abortSignal?: AbortSignal,
+): ChatRequestStrategy {
+	return async (workingMessages) => {
 		onCreateBubble();
 
 		const body: Record<string, unknown> = {
@@ -556,7 +542,7 @@ async function sendChatMessageStreamingDesktop(
 		}
 
 		if (response.body === null) {
-			throw new Error("Response body is null — streaming not supported.");
+			throw new Error("Response body is null \u2014 streaming not supported.");
 		}
 
 		const reader = response.body.getReader();
@@ -580,68 +566,11 @@ async function sendChatMessageStreamingDesktop(
 			}
 		} catch (err: unknown) {
 			if (err instanceof DOMException && err.name === "AbortError") {
-				return content;
+				return { content, toolCalls: [] };
 			}
 			throw err;
 		}
 
-		if (toolCalls.length === 0) {
-			return content;
-		}
-
-		const assistantMsg: ChatMessage = {
-			role: "assistant",
-			content,
-			tool_calls: toolCalls,
-		};
-		workingMessages.push(assistantMsg);
-
-		if (app === undefined) {
-			throw new Error("App reference required for tool execution.");
-		}
-
-		for (const tc of toolCalls) {
-			const fnName = tc.function.name;
-			const fnArgs = tc.function.arguments;
-			const toolEntry = findToolByName(fnName);
-
-			let result: string;
-			if (toolEntry === undefined) {
-				result = `Error: Unknown tool "${fnName}".`;
-			} else if (toolEntry.requiresApproval) {
-				let approved = false;
-				if (onApprovalRequest !== undefined) {
-					const message = toolEntry.approvalMessage !== undefined
-						? toolEntry.approvalMessage(fnArgs)
-						: `Allow ${toolEntry.friendlyName}?`;
-					approved = await onApprovalRequest({
-						toolName: fnName,
-						friendlyName: toolEntry.friendlyName,
-						message,
-						args: fnArgs,
-					});
-				}
-				result = approved
-					? await toolEntry.execute(app, fnArgs)
-					: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
-			} else {
-				result = await toolEntry.execute(app, fnArgs);
-			}
-
-			if (onToolCall !== undefined) {
-				const friendlyName = toolEntry !== undefined ? toolEntry.friendlyName : fnName;
-				const summary = toolEntry !== undefined ? toolEntry.summarize(fnArgs) : `Called ${fnName}`;
-				const resultSummary = toolEntry !== undefined ? toolEntry.summarizeResult(result) : "";
-				onToolCall({ toolName: fnName, friendlyName, summary, resultSummary, args: fnArgs, result });
-			}
-
-			workingMessages.push({
-				role: "tool",
-				tool_name: fnName,
-				content: result,
-			});
-		}
-	}
-
-	throw new Error("Tool calling loop exceeded maximum iterations.");
+		return { content, toolCalls };
+	};
 }
