@@ -1,8 +1,92 @@
-/*
+.ai-organizer-chat-container {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.ai-organizer-messages-area {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	min-height: 0;
+}
 
-If your plugin does not need CSS, delete this file.
+.ai-organizer-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
 
-*/
+.ai-organizer-message {
+	padding: 8px 12px;
+	border-radius: 8px;
+	max-width: 85%;
+	word-wrap: break-word;
+	white-space: pre-wrap;
+}
+
+.ai-organizer-message.user {
+	align-self: flex-end;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.ai-organizer-message.assistant {
+	align-self: flex-start;
+	background-color: var(--background-secondary);
+}
+
+.ai-organizer-message.error {
+	color: var(--text-error);
+}
+
+.ai-organizer-input-row {
+	display: flex;
+	flex-direction: row;
+	gap: 6px;
+	padding: 8px;
+}
+
+.ai-organizer-input-row textarea {
+	flex: 1;
+	resize: vertical;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-normal);
+	border-radius: 4px;
+	padding: 6px 8px;
+	font-family: inherit;
+	font-size: inherit;
+}
+
+.ai-organizer-input-row textarea:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.ai-organizer-input-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ai-organizer-settings-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px;
+	background: transparent;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.ai-organizer-settings-btn:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}

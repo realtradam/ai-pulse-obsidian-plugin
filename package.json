@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "ai-organizer",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Organize notes via AI powered by Ollama.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
