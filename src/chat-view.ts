@@ -1,6 +1,6 @@
 import { ItemView, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type AIOrganizer from "./main";
-import type { ChatMessage, ToolCallEvent } from "./ollama-client";
+import type { ChatMessage, ToolCallEvent, ApprovalRequestEvent } from "./ollama-client";
 import { sendChatMessageStreaming } from "./ollama-client";
 import { SettingsModal } from "./settings-modal";
 import { ToolModal } from "./tool-modal";
@@ -204,6 +204,10 @@ export class ChatView extends ItemView {
 				this.scrollToBottom();
 			};
 
+			const onApprovalRequest = (event: ApprovalRequestEvent): Promise<boolean> => {
+				return this.showApprovalRequest(event);
+			};
+
 			const onCreateBubble = (): void => {
 				// Finalize any previous bubble before creating a new one
 				if (currentBubble !== null) {
@@ -234,8 +238,14 @@ export class ChatView extends ItemView {
 				messages: this.messages,
 				tools: hasTools ? enabledTools : undefined,
 				app: hasTools ? this.plugin.app : undefined,
+				options: {
+					temperature: this.plugin.settings.temperature,
+					num_ctx: this.plugin.settings.numCtx,
+					num_predict: this.plugin.settings.numPredict,
+				},
 				onChunk,
 				onToolCall: hasTools ? onToolCall : undefined,
+				onApprovalRequest: hasTools ? onApprovalRequest : undefined,
 				onCreateBubble,
 				abortSignal: this.abortController.signal,
 			});
@@ -347,6 +357,50 @@ export class ChatView extends ItemView {
 			? event.result.substring(0, 500) + "..."
 			: event.result;
 		contentInner.createEl("pre", { text: resultPreview, cls: "ai-organizer-tool-call-result" });
+	}
+
+	private showApprovalRequest(event: ApprovalRequestEvent): Promise<boolean> {
+		return new Promise<boolean>((resolve) => {
+			if (this.messageContainer === null) {
+				resolve(false);
+				return;
+			}
+
+			const container = this.messageContainer.createDiv({ cls: "ai-organizer-approval" });
+
+			const header = container.createDiv({ cls: "ai-organizer-approval-header" });
+			setIcon(header.createSpan({ cls: "ai-organizer-approval-icon" }), "shield-alert");
+			header.createSpan({ text: event.friendlyName, cls: "ai-organizer-approval-name" });
+
+			container.createDiv({ text: event.message, cls: "ai-organizer-approval-message" });
+
+			const buttonRow = container.createDiv({ cls: "ai-organizer-approval-buttons" });
+
+			const approveBtn = buttonRow.createEl("button", {
+				text: "Approve",
+				cls: "ai-organizer-approval-approve",
+			});
+
+			const declineBtn = buttonRow.createEl("button", {
+				text: "Decline",
+				cls: "ai-organizer-approval-decline",
+			});
+
+			const finalize = (approved: boolean): void => {
+				approveBtn.disabled = true;
+				declineBtn.disabled = true;
+				container.addClass(approved ? "ai-organizer-approval-approved" : "ai-organizer-approval-declined");
+				const statusEl = container.createDiv({ cls: "ai-organizer-approval-status" });
+				statusEl.setText(approved ? "Approved" : "Declined");
+				this.scrollToBottom();
+				resolve(approved);
+			};
+
+			approveBtn.addEventListener("click", () => finalize(true));
+			declineBtn.addEventListener("click", () => finalize(false));
+
+			this.scrollToBottom();
+		});
 	}
 
 	private scrollToBottom(): void {

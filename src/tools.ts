@@ -25,6 +25,8 @@ export interface ToolEntry {
 	label: string;
 	description: string;
 	friendlyName: string;
+	requiresApproval: boolean;
+	approvalMessage?: (args: Record<string, unknown>) => string;
 	summarize: (args: Record<string, unknown>) => string;
 	summarizeResult: (result: string) => string;
 	definition: OllamaToolDefinition;
@@ -89,6 +91,30 @@ async function executeReadFile(app: App, args: Record<string, unknown>): Promise
 }
 
 /**
+ * Execute the "delete_file" tool.
+ * Deletes a file by its vault path (moves to trash).
+ */
+async function executeDeleteFile(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	try {
+		await app.vault.trash(file, true);
+		return `File "${filePath}" has been deleted (moved to system trash).`;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : "Unknown error";
+		return `Error deleting file: ${msg}`;
+	}
+}
+
+/**
  * All available tools for the plugin.
  */
 export const TOOL_REGISTRY: ToolEntry[] = [
@@ -97,6 +123,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 		label: "Search File Names",
 		description: "Search for files in the vault by name or path.",
 		friendlyName: "Search Files",
+		requiresApproval: false,
 		summarize: (args) => {
 			const query = typeof args.query === "string" ? args.query : "";
 			return `"${query}"`;
@@ -135,6 +162,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 		label: "Read File Contents",
 		description: "Read the full text content of a file in the vault.",
 		friendlyName: "Read File",
+		requiresApproval: false,
 		summarize: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "";
 			return `"/${filePath}"`;
@@ -164,6 +192,48 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			},
 		},
 		execute: executeReadFile,
+	},
+	{
+		id: "delete_file",
+		label: "Delete File",
+		description: "Delete a file from the vault (requires approval).",
+		friendlyName: "Delete File",
+		requiresApproval: true,
+		approvalMessage: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			return `Delete "${filePath}"?`;
+		},
+		summarize: (args) => {
+			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			return `"/${filePath}"`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) {
+				return result;
+			}
+			if (result.includes("declined")) {
+				return "Declined by user";
+			}
+			return "File deleted";
+		},
+		definition: {
+			type: "function",
+			function: {
+				name: "delete_file",
+				description: "Delete a file from the Obsidian vault. The file is moved to the system trash. The file_path must be an exact path as returned by search_files. This action requires user approval.",
+				parameters: {
+					type: "object",
+					required: ["file_path"],
+					properties: {
+						file_path: {
+							type: "string",
+							description: "The vault-relative path to the file to delete (e.g. 'folder/note.md').",
+						},
+					},
+				},
+			},
+		},
+		execute: executeDeleteFile,
 	},
 ];
 

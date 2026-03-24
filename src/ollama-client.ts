@@ -94,6 +94,54 @@ export async function listModels(ollamaUrl: string): Promise<string[]> {
 }
 
 /**
+ * Model info returned by /api/show.
+ */
+export interface ModelInfo {
+	contextLength: number;
+}
+
+/**
+ * Query Ollama for model details, extracting the context length.
+ * The context length is found in model_info under keys like
+ * "<family>.context_length" or "context_length".
+ */
+export async function showModel(ollamaUrl: string, model: string): Promise<ModelInfo> {
+	try {
+		const response = await requestUrl({
+			url: `${ollamaUrl}/api/show`,
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ model }),
+		});
+
+		const json = response.json as Record<string, unknown>;
+		let contextLength = 4096; // fallback default
+
+		const modelInfo = json.model_info as Record<string, unknown> | undefined;
+		if (modelInfo !== undefined && modelInfo !== null) {
+			// Look for context_length in model_info
+			// Keys are typically "<family>.context_length" e.g. "llama.context_length"
+			for (const key of Object.keys(modelInfo)) {
+				if (key.endsWith(".context_length") || key === "context_length") {
+					const val = modelInfo[key];
+					if (typeof val === "number" && val > 0) {
+						contextLength = val;
+						break;
+					}
+				}
+			}
+		}
+
+		return { contextLength };
+	} catch (err: unknown) {
+		if (err instanceof Error) {
+			throw new Error(`Failed to get model info: ${err.message}`);
+		}
+		throw new Error("Failed to get model info: unknown error.");
+	}
+}
+
+/**
  * Send a chat message with optional tool-calling agent loop.
  * When tools are provided, the function handles the multi-turn tool
  * execution loop automatically and calls onToolCall for each invocation.
@@ -105,6 +153,7 @@ export async function sendChatMessage(
 	tools?: OllamaToolDefinition[],
 	app?: App,
 	onToolCall?: (event: ToolCallEvent) => void,
+	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>,
 ): Promise<string> {
 	const maxIterations = 10;
 	let iterations = 0;
@@ -180,6 +229,22 @@ export async function sendChatMessage(
 				let result: string;
 				if (toolEntry === undefined) {
 					result = `Error: Unknown tool "${fnName}".`;
+				} else if (toolEntry.requiresApproval) {
+					let approved = false;
+					if (onApprovalRequest !== undefined) {
+						const message = toolEntry.approvalMessage !== undefined
+							? toolEntry.approvalMessage(fnArgs)
+							: `Allow ${toolEntry.friendlyName}?`;
+						approved = await onApprovalRequest({
+							toolName: fnName,
+							friendlyName: toolEntry.friendlyName,
+							message,
+							args: fnArgs,
+						});
+					}
+					result = approved
+						? await toolEntry.execute(app, fnArgs)
+						: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
 				} else {
 					result = await toolEntry.execute(app, fnArgs);
 				}
@@ -211,6 +276,22 @@ export async function sendChatMessage(
 }
 
 /**
+ * Approval request event for tools that require user confirmation.
+ */
+export interface ApprovalRequestEvent {
+	toolName: string;
+	friendlyName: string;
+	message: string;
+	args: Record<string, unknown>;
+}
+
+export interface ModelOptions {
+	temperature?: number;
+	num_ctx?: number;
+	num_predict?: number;
+}
+
+/**
  * Streaming chat options.
  */
 export interface StreamingChatOptions {
@@ -219,8 +300,10 @@ export interface StreamingChatOptions {
 	messages: ChatMessage[];
 	tools?: OllamaToolDefinition[];
 	app?: App;
+	options?: ModelOptions;
 	onChunk: (text: string) => void;
 	onToolCall?: (event: ToolCallEvent) => void;
+	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
 	onCreateBubble: () => void;
 	abortSignal?: AbortSignal;
 }
@@ -284,7 +367,7 @@ export async function sendChatMessageStreaming(
 async function sendChatMessageStreamingMobile(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, onCreateBubble } = opts;
+	const { ollamaUrl, model, messages, tools, app, options, onChunk, onToolCall, onApprovalRequest, onCreateBubble } = opts;
 	const maxIterations = 10;
 	let iterations = 0;
 
@@ -315,6 +398,10 @@ async function sendChatMessageStreamingMobile(
 
 		if (tools !== undefined && tools.length > 0) {
 			body.tools = tools;
+		}
+
+		if (options !== undefined) {
+			body.options = options;
 		}
 
 		try {
@@ -362,6 +449,22 @@ async function sendChatMessageStreamingMobile(
 				let result: string;
 				if (toolEntry === undefined) {
 					result = `Error: Unknown tool "${fnName}".`;
+				} else if (toolEntry.requiresApproval) {
+					let approved = false;
+					if (onApprovalRequest !== undefined) {
+						const message = toolEntry.approvalMessage !== undefined
+							? toolEntry.approvalMessage(fnArgs)
+							: `Allow ${toolEntry.friendlyName}?`;
+						approved = await onApprovalRequest({
+							toolName: fnName,
+							friendlyName: toolEntry.friendlyName,
+							message,
+							args: fnArgs,
+						});
+					}
+					result = approved
+						? await toolEntry.execute(app, fnArgs)
+						: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
 				} else {
 					result = await toolEntry.execute(app, fnArgs);
 				}
@@ -404,7 +507,7 @@ async function sendChatMessageStreamingMobile(
 async function sendChatMessageStreamingDesktop(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, onCreateBubble, abortSignal } = opts;
+	const { ollamaUrl, model, messages, tools, app, options, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
 	const maxIterations = 10;
 	let iterations = 0;
 
@@ -435,6 +538,10 @@ async function sendChatMessageStreamingDesktop(
 
 		if (tools !== undefined && tools.length > 0) {
 			body.tools = tools;
+		}
+
+		if (options !== undefined) {
+			body.options = options;
 		}
 
 		const response = await fetch(`${ollamaUrl}/api/chat`, {
@@ -501,6 +608,22 @@ async function sendChatMessageStreamingDesktop(
 			let result: string;
 			if (toolEntry === undefined) {
 				result = `Error: Unknown tool "${fnName}".`;
+			} else if (toolEntry.requiresApproval) {
+				let approved = false;
+				if (onApprovalRequest !== undefined) {
+					const message = toolEntry.approvalMessage !== undefined
+						? toolEntry.approvalMessage(fnArgs)
+						: `Allow ${toolEntry.friendlyName}?`;
+					approved = await onApprovalRequest({
+						toolName: fnName,
+						friendlyName: toolEntry.friendlyName,
+						message,
+						args: fnArgs,
+					});
+				}
+				result = approved
+					? await toolEntry.execute(app, fnArgs)
+					: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
 			} else {
 				result = await toolEntry.execute(app, fnArgs);
 			}
