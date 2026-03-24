@@ -105,6 +105,19 @@ export async function sendChatMessage(
 
 	const workingMessages = messages.map((m) => ({ ...m }));
 
+	// Inject a system prompt when tools are available to guide the model
+	if (tools !== undefined && tools.length > 0) {
+		const systemPrompt: ChatMessage = {
+			role: "system",
+			content:
+				"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
+				"When you use the search_files tool, the results contain exact file paths. " +
+				"You MUST use these exact paths when calling read_file or referencing files. " +
+				"NEVER guess or modify file paths — always use the paths returned by search_files verbatim.",
+		};
+		workingMessages.unshift(systemPrompt);
+	}
+
 	while (iterations < maxIterations) {
 		iterations++;
 
@@ -202,6 +215,7 @@ export interface StreamingChatOptions {
 	app?: App;
 	onChunk: (text: string) => void;
 	onToolCall?: (event: ToolCallEvent) => void;
+	onCreateBubble: () => void;
 	abortSignal?: AbortSignal;
 }
 
@@ -247,14 +261,30 @@ async function* readNdjsonStream(
 export async function sendChatMessageStreaming(
 	opts: StreamingChatOptions,
 ): Promise<string> {
-	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, abortSignal } = opts;
+	const { ollamaUrl, model, messages, tools, app, onChunk, onToolCall, onCreateBubble, abortSignal } = opts;
 	const maxIterations = 10;
 	let iterations = 0;
 
 	const workingMessages = messages.map((m) => ({ ...m }));
 
+	// Inject a system prompt when tools are available to guide the model
+	if (tools !== undefined && tools.length > 0) {
+		const systemPrompt: ChatMessage = {
+			role: "system",
+			content:
+				"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
+				"When you use the search_files tool, the results contain exact file paths. " +
+				"You MUST use these exact paths when calling read_file or referencing files. " +
+				"NEVER guess or modify file paths — always use the paths returned by search_files verbatim.",
+		};
+		workingMessages.unshift(systemPrompt);
+	}
+
 	while (iterations < maxIterations) {
 		iterations++;
+
+		// Signal the UI to create a new bubble for this round
+		onCreateBubble();
 
 		const body: Record<string, unknown> = {
 			model,

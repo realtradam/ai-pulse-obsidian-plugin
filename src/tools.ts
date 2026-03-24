@@ -115,7 +115,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			type: "function",
 			function: {
 				name: "search_files",
-				description: "Search for files in the Obsidian vault by name or path. Returns a list of matching file paths.",
+				description: "Search for files in the Obsidian vault by name or path. Returns a list of exact file paths. Use these exact paths for any subsequent file operations.",
 				parameters: {
 					type: "object",
 					required: ["query"],
@@ -150,7 +150,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			type: "function",
 			function: {
 				name: "read_file",
-				description: "Read the full text content of a file in the Obsidian vault given its path.",
+				description: "Read the full text content of a file in the Obsidian vault. The file_path must be an exact path as returned by search_files.",
 				parameters: {
 					type: "object",
 					required: ["file_path"],

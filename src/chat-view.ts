@@ -161,8 +161,7 @@ export class ChatView extends ItemView {
 		this.abortController = new AbortController();
 		this.setStreamingState(true);
 
-		// Create the assistant bubble for streaming into
-		const streamingBubble = this.createStreamingBubble();
+		let currentBubble: HTMLDivElement | null = null;
 
 		try {
 			const enabledTools = this.getEnabledTools();
@@ -173,9 +172,28 @@ export class ChatView extends ItemView {
 				this.scrollToBottom();
 			};
 
+			const onCreateBubble = (): void => {
+				// Finalize any previous bubble before creating a new one
+				if (currentBubble !== null) {
+					currentBubble.removeClass("ai-organizer-streaming");
+					// Remove empty bubbles from tool-only rounds
+					if (currentBubble.textContent?.trim() === "") {
+						currentBubble.remove();
+					}
+				}
+				currentBubble = this.createStreamingBubble();
+			};
+
 			const onChunk = (chunk: string): void => {
-				streamingBubble.textContent += chunk;
-				this.debouncedScrollToBottom();
+				if (currentBubble !== null) {
+					// Remove the loading indicator on first chunk
+					const loadingIcon = currentBubble.querySelector(".ai-organizer-loading-icon");
+					if (loadingIcon !== null) {
+						loadingIcon.remove();
+					}
+					currentBubble.appendText(chunk);
+					this.debouncedScrollToBottom();
+				}
 			};
 
 			const response = await sendChatMessageStreaming({
@@ -186,16 +204,38 @@ export class ChatView extends ItemView {
 				app: hasTools ? this.plugin.app : undefined,
 				onChunk,
 				onToolCall: hasTools ? onToolCall : undefined,
+				onCreateBubble,
 				abortSignal: this.abortController.signal,
 			});
 
-			// Finalize the streaming bubble
-			streamingBubble.removeClass("ai-organizer-streaming");
+			// Finalize the last streaming bubble
+			if (currentBubble !== null) {
+				(currentBubble as HTMLDivElement).removeClass("ai-organizer-streaming");
+				// Remove loading icon if still present
+				const remainingIcon = (currentBubble as HTMLDivElement).querySelector(".ai-organizer-loading-icon");
+				if (remainingIcon !== null) {
+					remainingIcon.remove();
+				}
+				// Remove empty assistant bubbles (e.g., tool-only rounds with no content)
+				if ((currentBubble as HTMLDivElement).textContent?.trim() === "") {
+					(currentBubble as HTMLDivElement).remove();
+				}
+			}
 			this.messages.push({ role: "assistant", content: response });
 			this.scrollToBottom();
 		} catch (err: unknown) {
 			// Finalize bubble even on error
-			streamingBubble.removeClass("ai-organizer-streaming");
+			if (currentBubble !== null) {
+				(currentBubble as HTMLDivElement).removeClass("ai-organizer-streaming");
+				const errorIcon = (currentBubble as HTMLDivElement).querySelector(".ai-organizer-loading-icon");
+				if (errorIcon !== null) {
+					errorIcon.remove();
+				}
+				// Remove empty bubble on error
+				if ((currentBubble as HTMLDivElement).textContent?.trim() === "") {
+					(currentBubble as HTMLDivElement).remove();
+				}
+			}
 
 			const errMsg = err instanceof Error ? err.message : "Unknown error.";
 			new Notice(errMsg);
@@ -214,9 +254,13 @@ export class ChatView extends ItemView {
 			// Should not happen, but satisfy TS
 			throw new Error("Message container not initialized.");
 		}
-		return this.messageContainer.createDiv({
+		const bubble = this.messageContainer.createDiv({
 			cls: "ai-organizer-message assistant ai-organizer-streaming",
 		});
+		// Add a loading indicator icon
+		const iconSpan = bubble.createSpan({ cls: "ai-organizer-loading-icon" });
+		setIcon(iconSpan, "more-horizontal");
+		return bubble;
 	}
 
 	private appendMessage(role: "user" | "assistant" | "error", content: string): void {

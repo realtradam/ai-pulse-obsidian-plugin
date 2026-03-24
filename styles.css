@@ -37,7 +37,23 @@
 
 .ai-organizer-message.assistant {
 	align-self: flex-start;
-	background-color: var(--background-secondary);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ai-organizer-streaming {
+	opacity: 0.85;
+}
+
+.ai-organizer-loading-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+}
+
+.ai-organizer-loading-icon svg {
+	width: 20px;
+	height: 20px;
 }
 
 .ai-organizer-message.error {
