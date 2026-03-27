@@ -244,6 +244,37 @@ function buildToolSystemPrompt(): string {
 const TOOL_SYSTEM_PROMPT = buildToolSystemPrompt();
 
 /**
+ * Detect whether an edit tool call is a no-op (old_text === new_text).
+ * Returns true for edit_file and batch_edit_file when no actual changes
+ * would occur, so the approval prompt can be skipped.
+ */
+function isNoOpEdit(toolName: string, args: Record<string, unknown>): boolean {
+	if (toolName === "edit_file") {
+		const oldText = typeof args.old_text === "string" ? args.old_text : "";
+		const newText = typeof args.new_text === "string" ? args.new_text : "";
+		return oldText === newText;
+	}
+	if (toolName === "batch_edit_file") {
+		let operations: unknown[] = [];
+		if (Array.isArray(args.operations)) {
+			operations = args.operations;
+		} else if (typeof args.operations === "string") {
+			try { operations = JSON.parse(args.operations) as unknown[]; } catch { return false; }
+		}
+		// No-op if every operation has identical old_text and new_text
+		if (operations.length === 0) return false;
+		return operations.every((op) => {
+			if (typeof op !== "object" || op === null) return false;
+			const o = op as Record<string, unknown>;
+			const oldText = typeof o.old_text === "string" ? o.old_text : "";
+			const newText = typeof o.new_text === "string" ? o.new_text : "";
+			return oldText === newText;
+		});
+	}
+	return false;
+}
+
+/**
  * Shared agent loop: injects the system prompt, calls the strategy for each
  * iteration, executes tool calls, and loops until the model returns a final
  * text response or the iteration cap is reached.
@@ -304,7 +335,8 @@ async function chatAgentLoop(opts: AgentLoopOptions): Promise<string> {
 			let result: string;
 			if (toolEntry === undefined) {
 				result = `Error: Unknown tool "${fnName}".`;
-			} else if (toolEntry.requiresApproval) {
+			} else if (toolEntry.requiresApproval && !isNoOpEdit(fnName, fnArgs)) {
+				// Requires approval — but skip the prompt for no-op edits
 				let approved = false;
 				if (onApprovalRequest !== undefined) {
 					const message = toolEntry.approvalMessage !== undefined

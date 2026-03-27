@@ -440,6 +440,11 @@ export class ChatView extends ItemView {
 		header.createSpan({ text: event.friendlyName, cls: "ai-pulse-tool-call-name" });
 
 		container.createDiv({ text: event.summary, cls: "ai-pulse-tool-call-summary" });
+		const isError = event.result.startsWith("Error");
+		if (isError) {
+			container.addClass("ai-pulse-tool-call-error");
+		}
+
 		container.createDiv({ text: event.resultSummary, cls: "ai-pulse-tool-call-result-summary" });
 
 		// DaisyUI-style collapse with checkbox

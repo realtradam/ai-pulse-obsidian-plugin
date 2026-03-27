@@ -338,6 +338,11 @@ async function executeEditFile(app: App, args: Record<string, unknown>): Promise
 	const oldText = typeof args.old_text === "string" ? args.old_text : "";
 	const newText = typeof args.new_text === "string" ? args.new_text : "";
 
+	// Reject no-op edits where old_text and new_text are identical
+	if (oldText === newText) {
+		return `Error: old_text and new_text are identical — no change would occur. Provide different text for new_text, or skip this edit.`;
+	}
+
 	const file = app.vault.getAbstractFileByPath(filePath);
 	if (file === null || !(file instanceof TFile)) {
 		return `Error: File not found at path "${filePath}".`;
