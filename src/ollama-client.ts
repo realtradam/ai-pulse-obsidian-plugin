@@ -1,4 +1,4 @@
-import { Platform, requestUrl } from "obsidian";
+import { Platform, requestUrl, TFile } from "obsidian";
 import type { App } from "obsidian";
 import type { OllamaToolDefinition } from "./tools";
 import { findToolByName } from "./tools";
@@ -244,34 +244,271 @@ function buildToolSystemPrompt(): string {
 const TOOL_SYSTEM_PROMPT = buildToolSystemPrompt();
 
 /**
- * Detect whether an edit tool call is a no-op (old_text === new_text).
- * Returns true for edit_file and batch_edit_file when no actual changes
- * would occur, so the approval prompt can be skipped.
+ * Helper: parse an array-typed argument that may arrive as a JSON string.
+ * Duplicated from tools.ts because ollama-client should not depend on
+ * the execute helpers — only on the registry lookup.
  */
-function isNoOpEdit(toolName: string, args: Record<string, unknown>): boolean {
-	if (toolName === "edit_file") {
-		const oldText = typeof args.old_text === "string" ? args.old_text : "";
-		const newText = typeof args.new_text === "string" ? args.new_text : "";
-		return oldText === newText;
+function parseArrayArg(value: unknown): unknown[] | null {
+	if (Array.isArray(value)) return value;
+	if (typeof value === "string") {
+		try {
+			const parsed = JSON.parse(value) as unknown;
+			if (Array.isArray(parsed)) return parsed;
+		} catch { /* fall through */ }
 	}
-	if (toolName === "batch_edit_file") {
-		let operations: unknown[] = [];
-		if (Array.isArray(args.operations)) {
-			operations = args.operations;
-		} else if (typeof args.operations === "string") {
-			try { operations = JSON.parse(args.operations) as unknown[]; } catch { return false; }
+	return null;
+}
+
+/**
+ * Pre-validate a tool call before asking the user for approval.
+ * Returns an error string if the call will deterministically fail
+ * (so the approval prompt can be skipped and the error fed straight
+ * back to the model). Returns null when validation passes and the
+ * normal approval flow should proceed.
+ *
+ * Only covers tools that require approval — read-only tools execute
+ * without approval and handle their own errors.
+ */
+function preValidateTool(
+	app: App,
+	toolName: string,
+	args: Record<string, unknown>,
+): string | null {
+	switch (toolName) {
+		case "edit_file":
+			return preValidateEditFile(app, args);
+		case "create_file":
+			return preValidateCreateFile(app, args);
+		case "delete_file":
+			return preValidateDeleteFile(app, args);
+		case "move_file":
+			return preValidateMoveFile(app, args);
+		case "set_frontmatter":
+			return preValidateSetFrontmatter(app, args);
+		case "batch_edit_file":
+			return preValidateBatchEditFile(app, args);
+		case "batch_delete_file":
+			return preValidateBatchDeleteFile(app, args);
+		case "batch_move_file":
+			return preValidateBatchMoveFile(app, args);
+		case "batch_set_frontmatter":
+			return preValidateBatchSetFrontmatter(app, args);
+		default:
+			return null;
+	}
+}
+
+// -- Individual tool validators ------------------------------------------------
+
+function preValidateEditFile(app: App, args: Record<string, unknown>): string | null {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const oldText = typeof args.old_text === "string" ? args.old_text : "";
+	const newText = typeof args.new_text === "string" ? args.new_text : "";
+	if (oldText === newText) {
+		return "Error: old_text and new_text are identical — no change would occur. Provide different text for new_text, or skip this edit.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	return null;
+}
+
+function preValidateCreateFile(app: App, args: Record<string, unknown>): string | null {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const existing = app.vault.getAbstractFileByPath(filePath);
+	if (existing !== null) {
+		return `Error: A file already exists at "${filePath}". Use edit_file to modify it.`;
+	}
+
+	return null;
+}
+
+function preValidateDeleteFile(app: App, args: Record<string, unknown>): string | null {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	return null;
+}
+
+function preValidateMoveFile(app: App, args: Record<string, unknown>): string | null {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const newPath = typeof args.new_path === "string" ? args.new_path : "";
+	if (newPath === "") {
+		return "Error: new_path parameter is required.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	const destExists = app.vault.getAbstractFileByPath(newPath);
+	if (destExists !== null) {
+		return `Error: A file or folder already exists at "${newPath}".`;
+	}
+
+	return null;
+}
+
+function preValidateSetFrontmatter(app: App, args: Record<string, unknown>): string | null {
+	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	let properties = args.properties;
+	if (typeof properties === "string") {
+		try {
+			properties = JSON.parse(properties) as unknown;
+		} catch {
+			return "Error: properties must be a valid JSON object. Failed to parse the string.";
 		}
-		// No-op if every operation has identical old_text and new_text
-		if (operations.length === 0) return false;
-		return operations.every((op) => {
-			if (typeof op !== "object" || op === null) return false;
-			const o = op as Record<string, unknown>;
-			const oldText = typeof o.old_text === "string" ? o.old_text : "";
-			const newText = typeof o.new_text === "string" ? o.new_text : "";
-			return oldText === newText;
-		});
 	}
-	return false;
+	if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
+		return "Error: properties must be a JSON object with key-value pairs.";
+	}
+	if (Object.keys(properties as Record<string, unknown>).length === 0) {
+		return "Error: properties object is empty. Provide at least one key to set.";
+	}
+
+	const file = app.vault.getAbstractFileByPath(filePath);
+	if (file === null || !(file instanceof TFile)) {
+		return `Error: File not found at path "${filePath}".`;
+	}
+
+	return null;
+}
+
+// -- Batch tool validators -----------------------------------------------------
+
+function preValidateBatchEditFile(app: App, args: Record<string, unknown>): string | null {
+	const operations = parseArrayArg(args.operations);
+	if (operations === null || operations.length === 0) {
+		return "Error: operations parameter must be a non-empty array of {file_path, old_text, new_text} objects.";
+	}
+
+	// Fail if every operation is a no-op
+	const allNoOps = operations.every((op) => {
+		if (typeof op !== "object" || op === null) return false;
+		const o = op as Record<string, unknown>;
+		const oldText = typeof o.old_text === "string" ? o.old_text : "";
+		const newText = typeof o.new_text === "string" ? o.new_text : "";
+		return oldText === newText;
+	});
+	if (allNoOps) {
+		return "Error: All operations have identical old_text and new_text — no changes would occur.";
+	}
+
+	// Fail if every operation targets a file that doesn't exist
+	const allMissing = operations.every((op) => {
+		if (typeof op !== "object" || op === null) return true;
+		const o = op as Record<string, unknown>;
+		const fp = typeof o.file_path === "string" ? o.file_path : "";
+		if (fp === "") return true;
+		const file = app.vault.getAbstractFileByPath(fp);
+		return file === null || !(file instanceof TFile);
+	});
+	if (allMissing) {
+		return "Error: None of the target files exist in the vault.";
+	}
+
+	return null;
+}
+
+function preValidateBatchDeleteFile(app: App, args: Record<string, unknown>): string | null {
+	const filePaths = parseArrayArg(args.file_paths);
+	if (filePaths === null || filePaths.length === 0) {
+		return "Error: file_paths parameter must be a non-empty array of strings.";
+	}
+
+	const allMissing = filePaths.every((fp) => {
+		const path = typeof fp === "string" ? fp : "";
+		if (path === "") return true;
+		const file = app.vault.getAbstractFileByPath(path);
+		return file === null || !(file instanceof TFile);
+	});
+	if (allMissing) {
+		return "Error: None of the specified files exist in the vault.";
+	}
+
+	return null;
+}
+
+function preValidateBatchMoveFile(app: App, args: Record<string, unknown>): string | null {
+	const operations = parseArrayArg(args.operations);
+	if (operations === null || operations.length === 0) {
+		return "Error: operations parameter must be a non-empty array of {file_path, new_path} objects.";
+	}
+
+	// Fail if every source file is missing
+	const allSourcesMissing = operations.every((op) => {
+		if (typeof op !== "object" || op === null) return true;
+		const o = op as Record<string, unknown>;
+		const fp = typeof o.file_path === "string" ? o.file_path : "";
+		if (fp === "") return true;
+		const file = app.vault.getAbstractFileByPath(fp);
+		return file === null || !(file instanceof TFile);
+	});
+	if (allSourcesMissing) {
+		return "Error: None of the source files exist in the vault.";
+	}
+
+	// Fail if every destination already exists
+	const allDestsExist = operations.every((op) => {
+		if (typeof op !== "object" || op === null) return false;
+		const o = op as Record<string, unknown>;
+		const np = typeof o.new_path === "string" ? o.new_path : "";
+		if (np === "") return false;
+		return app.vault.getAbstractFileByPath(np) !== null;
+	});
+	if (allDestsExist) {
+		return "Error: All destination paths already exist in the vault.";
+	}
+
+	return null;
+}
+
+function preValidateBatchSetFrontmatter(app: App, args: Record<string, unknown>): string | null {
+	const operations = parseArrayArg(args.operations);
+	if (operations === null || operations.length === 0) {
+		return "Error: operations parameter must be a non-empty array of {file_path, properties} objects.";
+	}
+
+	const allMissing = operations.every((op) => {
+		if (typeof op !== "object" || op === null) return true;
+		const o = op as Record<string, unknown>;
+		const fp = typeof o.file_path === "string" ? o.file_path : "";
+		if (fp === "") return true;
+		const file = app.vault.getAbstractFileByPath(fp);
+		return file === null || !(file instanceof TFile);
+	});
+	if (allMissing) {
+		return "Error: None of the target files exist in the vault.";
+	}
+
+	return null;
 }
 
 /**
@@ -335,23 +572,30 @@ async function chatAgentLoop(opts: AgentLoopOptions): Promise<string> {
 			let result: string;
 			if (toolEntry === undefined) {
 				result = `Error: Unknown tool "${fnName}".`;
-			} else if (toolEntry.requiresApproval && !isNoOpEdit(fnName, fnArgs)) {
-				// Requires approval — but skip the prompt for no-op edits
-				let approved = false;
-				if (onApprovalRequest !== undefined) {
-					const message = toolEntry.approvalMessage !== undefined
-						? toolEntry.approvalMessage(fnArgs)
-						: `Allow ${toolEntry.friendlyName}?`;
-					approved = await onApprovalRequest({
-						toolName: fnName,
-						friendlyName: toolEntry.friendlyName,
-						message,
-						args: fnArgs,
-					});
+			} else if (toolEntry.requiresApproval) {
+				// Pre-validate before asking the user for approval.
+				// If the call will deterministically fail, skip the prompt
+				// and feed the error back to the model immediately.
+				const validationError = preValidateTool(app, fnName, fnArgs);
+				if (validationError !== null) {
+					result = validationError;
+				} else {
+					let approved = false;
+					if (onApprovalRequest !== undefined) {
+						const message = toolEntry.approvalMessage !== undefined
+							? toolEntry.approvalMessage(fnArgs)
+							: `Allow ${toolEntry.friendlyName}?`;
+						approved = await onApprovalRequest({
+							toolName: fnName,
+							friendlyName: toolEntry.friendlyName,
+							message,
+							args: fnArgs,
+						});
+					}
+					result = approved
+						? await toolEntry.execute(app, fnArgs)
+						: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
 				}
-				result = approved
-					? await toolEntry.execute(app, fnArgs)
-					: `Action declined by user: ${toolEntry.friendlyName} was not approved.`;
 			} else {
 				result = await toolEntry.execute(app, fnArgs);
 			}
