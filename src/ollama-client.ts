@@ -435,6 +435,9 @@ export async function sendChatMessage(
 
 			return { content, toolCalls };
 		} catch (err: unknown) {
+			if (err instanceof DOMException && err.name === "AbortError") {
+				throw err;
+			}
 			if (err instanceof Error) {
 				throw new Error(`Chat request failed: ${err.message}`);
 			}
@@ -511,6 +514,36 @@ async function* readNdjsonStream(
 }
 
 /**
+ * Wraps an async generator with a per-iteration idle timeout.
+ * The timer resets on every yielded value. If no value arrives
+ * within `timeoutMs`, an error is thrown.
+ *
+ * This handles cold model starts (long initial load) as well as
+ * mid-stream stalls where the connection goes silent.
+ */
+async function* withIdleTimeout<T>(
+	source: AsyncGenerator<T>,
+	timeoutMs: number,
+): AsyncGenerator<T> {
+	while (true) {
+		const result = await Promise.race([
+			source.next(),
+			new Promise<never>((_resolve, reject) => {
+				setTimeout(() => {
+					reject(new Error(
+						`No response from Ollama for ${Math.round(timeoutMs / 1000)} seconds. ` +
+						"The model may still be loading — try again in a moment.",
+					));
+				}, timeoutMs);
+			}),
+		]);
+
+		if (result.done === true) return;
+		yield result.value;
+	}
+}
+
+/**
  * Send a chat message with streaming.
  * Streams text chunks via onChunk callback. Supports tool-calling agent loop.
  * Returns the full accumulated response text.
@@ -525,7 +558,7 @@ export async function sendChatMessageStreaming(
 	const { ollamaUrl, model, tools, app, options, userSystemPrompt, vaultContext, onChunk, onToolCall, onApprovalRequest, onCreateBubble, abortSignal } = opts;
 
 	const sendRequest: ChatRequestStrategy = Platform.isMobile
-		? buildMobileStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble)
+		? buildMobileStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble, abortSignal)
 		: buildDesktopStreamingStrategy(ollamaUrl, model, tools, options, onChunk, onCreateBubble, abortSignal);
 
 	return chatAgentLoop({
@@ -544,6 +577,9 @@ export async function sendChatMessageStreaming(
  * Mobile strategy: uses Obsidian's requestUrl() (non-streaming) so the request
  * goes through the native networking layer and can reach localhost / LAN.
  * Delivers the full response as a single chunk.
+ *
+ * Since requestUrl() cannot be natively aborted, we race it against the
+ * AbortSignal and check the signal before delivering content.
  */
 function buildMobileStrategy(
 	ollamaUrl: string,
@@ -552,8 +588,14 @@ function buildMobileStrategy(
 	options: ModelOptions | undefined,
 	onChunk: (text: string) => void,
 	onCreateBubble: () => void,
+	abortSignal?: AbortSignal,
 ): ChatRequestStrategy {
 	return async (workingMessages) => {
+		// Bail out immediately if already aborted
+		if (abortSignal?.aborted === true) {
+			throw new DOMException("The operation was aborted.", "AbortError");
+		}
+
 		onCreateBubble();
 
 		const body: Record<string, unknown> = {
@@ -571,12 +613,31 @@ function buildMobileStrategy(
 		}
 
 		try {
-			const response = await requestUrl({
+			// Race requestUrl against the abort signal so the user gets
+			// immediate feedback even though the HTTP request completes
+			// in the background.
+			const requestPromise = requestUrl({
 				url: `${ollamaUrl}/api/chat`,
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
 			});
+
+			let response: Awaited<ReturnType<typeof requestUrl>>;
+			if (abortSignal !== undefined) {
+				const abortPromise = new Promise<never>((_resolve, reject) => {
+					if (abortSignal.aborted) {
+						reject(new DOMException("The operation was aborted.", "AbortError"));
+						return;
+					}
+					abortSignal.addEventListener("abort", () => {
+						reject(new DOMException("The operation was aborted.", "AbortError"));
+					}, { once: true });
+				});
+				response = await Promise.race([requestPromise, abortPromise]);
+			} else {
+				response = await requestPromise;
+			}
 
 			const messageObj = (response.json as Record<string, unknown>).message;
 			if (typeof messageObj !== "object" || messageObj === null) {
@@ -587,15 +648,23 @@ function buildMobileStrategy(
 			const content = typeof msg.content === "string" ? msg.content : "";
 			const toolCalls = parseToolCalls(msg.tool_calls);
 
+			// Check abort before delivering content to the UI
+			if (abortSignal?.aborted === true) {
+				throw new DOMException("The operation was aborted.", "AbortError");
+			}
+
 			if (content !== "") {
 				onChunk(content);
 			}
 
 			return { content, toolCalls };
 		} catch (err: unknown) {
+			if (err instanceof DOMException && err.name === "AbortError") {
+				throw err;
+			}
 			if (err instanceof Error) {
-				const msg = err.message.toLowerCase();
-				if (msg.includes("net") || msg.includes("fetch") || msg.includes("load") || msg.includes("failed")) {
+				const errMsg = err.message.toLowerCase();
+				if (errMsg.includes("net") || errMsg.includes("fetch") || errMsg.includes("load") || errMsg.includes("failed")) {
 					throw new Error(
 						`Cannot reach Ollama at ${ollamaUrl}. ` +
 						"On mobile, Ollama must be accessible over your network (not localhost). " +
@@ -659,8 +728,17 @@ function buildDesktopStreamingStrategy(
 		let content = "";
 		const toolCalls: ToolCallResponse[] = [];
 
+		// 5 minute idle timeout per chunk — generous enough for cold model
+		// loads, but catches silent connection drops.
+		const IDLE_TIMEOUT_MS = 300_000;
+
 		try {
-			for await (const chunk of readNdjsonStream(reader, decoder)) {
+			for await (const chunk of withIdleTimeout(readNdjsonStream(reader, decoder), IDLE_TIMEOUT_MS)) {
+				// Check for mid-stream errors from Ollama
+				if (typeof chunk.error === "string") {
+					throw new Error(`Ollama error: ${chunk.error}`);
+				}
+
 				const rawMsg: unknown = chunk.message;
 				const msg = typeof rawMsg === "object" && rawMsg !== null
 					? rawMsg as Record<string, unknown>
@@ -677,7 +755,7 @@ function buildDesktopStreamingStrategy(
 			}
 		} catch (err: unknown) {
 			if (err instanceof DOMException && err.name === "AbortError") {
-				return { content, toolCalls: [] };
+				throw err;
 			}
 			throw err;
 		}

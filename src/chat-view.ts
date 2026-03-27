@@ -322,24 +322,29 @@ export class ChatView extends ItemView {
 			this.messages.push({ role: "assistant", content: response });
 			this.scrollToBottom();
 		} catch (err: unknown) {
-			// Finalize bubble even on error
+			const isAbort = err instanceof DOMException && err.name === "AbortError";
+
+			// Clean up the streaming bubble
 			if (currentBubble !== null) {
 				currentBubble.removeClass("ai-pulse-streaming");
 				const errorIcon = currentBubble.querySelector(".ai-pulse-loading-icon");
 				if (errorIcon !== null) {
 					errorIcon.remove();
 				}
-				// Remove empty bubble on error
-				if (currentBubble.textContent?.trim() === "") {
+				// Remove empty bubble, or remove partial bubble on abort
+				if (currentBubble.textContent?.trim() === "" || isAbort) {
 					currentBubble.remove();
 				}
 				this.bubbleContent.delete(currentBubble);
 			}
 
-			const errMsg = err instanceof Error ? err.message : "Unknown error.";
-			new Notice(errMsg);
-			this.appendMessage("error", `Error: ${errMsg}`);
-			this.scrollToBottom();
+			// Only show error UI for real errors, not user-initiated aborts
+			if (!isAbort) {
+				const errMsg = err instanceof Error ? err.message : "Unknown error.";
+				new Notice(errMsg);
+				this.appendMessage("error", `Error: ${errMsg}`);
+				this.scrollToBottom();
+			}
 		}
 
 		// Restore normal state
@@ -726,8 +731,12 @@ export class ChatView extends ItemView {
 	}
 
 	private scrollToBottom(): void {
-		if (this.messageContainer !== null) {
-			this.messageContainer.scrollTop = this.messageContainer.scrollHeight;
+		if (this.messageContainer === null) return;
+		const lastChild = this.messageContainer.lastElementChild;
+		if (lastChild !== null) {
+			requestAnimationFrame(() => {
+				lastChild.scrollIntoView({ block: "end", behavior: "instant" });
+			});
 		}
 	}
 
@@ -735,7 +744,13 @@ export class ChatView extends ItemView {
 		if (this.scrollDebounceTimer !== null) return;
 		this.scrollDebounceTimer = setTimeout(() => {
 			this.scrollDebounceTimer = null;
-			this.scrollToBottom();
+			if (this.messageContainer === null) return;
+			const lastChild = this.messageContainer.lastElementChild;
+			if (lastChild !== null) {
+				requestAnimationFrame(() => {
+					lastChild.scrollIntoView({ block: "end", behavior: "instant" });
+				});
+			}
 		}, 50);
 	}
 
