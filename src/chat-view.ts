@@ -299,41 +299,41 @@ export class ChatView extends ItemView {
 				ollamaUrl: this.plugin.settings.ollamaUrl,
 				model: this.plugin.settings.model,
 				messages: this.messages,
-				tools: hasTools ? enabledTools : undefined,
-				app: hasTools ? this.plugin.app : undefined,
+				...(hasTools ? { tools: enabledTools } : {}),
+				...(hasTools ? { app: this.plugin.app } : {}),
 				options: {
 					temperature: this.plugin.settings.temperature,
 					num_ctx: this.plugin.settings.numCtx,
 					num_predict: this.plugin.settings.numPredict,
 				},
-				userSystemPrompt,
-				vaultContext,
+				...(userSystemPrompt !== undefined ? { userSystemPrompt } : {}),
+				...(vaultContext !== undefined ? { vaultContext } : {}),
 				onChunk,
-				onToolCall: hasTools ? onToolCall : undefined,
-				onApprovalRequest: hasTools ? onApprovalRequest : undefined,
+				...(hasTools ? { onToolCall } : {}),
+				...(hasTools ? { onApprovalRequest } : {}),
 				onCreateBubble,
 				abortSignal: this.abortController.signal,
 			});
 
 			// Finalize the last streaming bubble
 			if (currentBubble !== null) {
-				await this.finalizeBubble(currentBubble as HTMLDivElement);
+				await this.finalizeBubble(currentBubble);
 			}
 			this.messages.push({ role: "assistant", content: response });
 			this.scrollToBottom();
 		} catch (err: unknown) {
 			// Finalize bubble even on error
 			if (currentBubble !== null) {
-				(currentBubble as HTMLDivElement).removeClass("ai-pulse-streaming");
-				const errorIcon = (currentBubble as HTMLDivElement).querySelector(".ai-pulse-loading-icon");
+				currentBubble.removeClass("ai-pulse-streaming");
+				const errorIcon = currentBubble.querySelector(".ai-pulse-loading-icon");
 				if (errorIcon !== null) {
 					errorIcon.remove();
 				}
 				// Remove empty bubble on error
-				if ((currentBubble as HTMLDivElement).textContent?.trim() === "") {
-					(currentBubble as HTMLDivElement).remove();
+				if (currentBubble.textContent?.trim() === "") {
+					currentBubble.remove();
 				}
-				this.bubbleContent.delete(currentBubble as HTMLDivElement);
+				this.bubbleContent.delete(currentBubble);
 			}
 
 			const errMsg = err instanceof Error ? err.message : "Unknown error.";

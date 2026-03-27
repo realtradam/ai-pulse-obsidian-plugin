@@ -1,5 +1,6 @@
 import { Plugin, WorkspaceLeaf } from "obsidian";
-import { AIPulseSettings, DEFAULT_SETTINGS } from "./settings";
+import type { AIPulseSettings } from "./settings";
+import { DEFAULT_SETTINGS } from "./settings";
 import { ChatView, VIEW_TYPE_CHAT } from "./chat-view";
 import { testConnection, listModels } from "./ollama-client";
 import { getDefaultToolStates } from "./tools";

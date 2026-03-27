@@ -59,9 +59,9 @@ function parseToolCalls(value: unknown): ToolCallResponse[] {
 		const fnObj = fn as Record<string, unknown>;
 		if (typeof fnObj.name !== "string") continue;
 		result.push({
-			type: typeof obj.type === "string" ? obj.type : undefined,
+			...(typeof obj.type === "string" ? { type: obj.type } : {}),
 			function: {
-				index: typeof fnObj.index === "number" ? fnObj.index : undefined,
+				...(typeof fnObj.index === "number" ? { index: fnObj.index } : {}),
 				name: fnObj.name,
 				arguments: typeof fnObj.arguments === "object" && fnObj.arguments !== null
 					? fnObj.arguments as Record<string, unknown>
@@ -182,10 +182,10 @@ async function chatAgentLoop(opts: AgentLoopOptions): Promise<string> {
 		if (hasTools) {
 			parts.push(TOOL_SYSTEM_PROMPT);
 		}
-		if (hasVaultContext) {
+		if (vaultContext !== undefined && vaultContext.trim() !== "") {
 			parts.push(vaultContext);
 		}
-		if (hasUserPrompt) {
+		if (userSystemPrompt !== undefined && userSystemPrompt.trim() !== "") {
 			parts.push("USER INSTRUCTIONS:\n" + userSystemPrompt.trim());
 		}
 		workingMessages.unshift({ role: "system", content: parts.join("\n\n") });
