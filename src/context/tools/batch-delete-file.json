@@ -1,0 +1,25 @@
+{
+	"id": "batch_delete_file",
+	"label": "Batch Delete Files",
+	"description": "Delete multiple files at once (requires approval).",
+	"friendlyName": "Batch Delete Files",
+	"requiresApproval": true,
+	"batchOf": "delete_file",
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "batch_delete_file",
+			"description": "Delete multiple files from the Obsidian vault in a single call. Files are moved to the system trash. If some files fail (e.g. not found), the operation continues with the remaining files and reports per-file results. All file paths must be exact vault-relative paths (from the vault context or get_current_note). This action requires user approval for the entire batch.",
+			"parameters": {
+				"type": "object",
+				"required": ["file_paths"],
+				"properties": {
+					"file_paths": {
+						"type": "string",
+						"description": "A JSON array of vault-relative file paths to delete. Example: [\"folder/note1.md\", \"folder/note2.md\"]"
+					}
+				}
+			}
+		}
+	}
+}

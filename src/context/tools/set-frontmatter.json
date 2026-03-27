@@ -1,0 +1,28 @@
+{
+	"id": "set_frontmatter",
+	"label": "Set Frontmatter",
+	"description": "Add or update YAML frontmatter properties (requires approval).",
+	"friendlyName": "Set Frontmatter",
+	"requiresApproval": true,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "set_frontmatter",
+			"description": "Add or update YAML frontmatter properties on a note. Pass a JSON object of key-value pairs to set. Existing properties not mentioned are left unchanged. Set a value to null to remove that property. Use this for tags, aliases, categories, dates, or any custom metadata. For tags, use an array of strings (e.g. [\"ai\", \"research\"]). This is safer than edit_file for metadata changes because it preserves YAML formatting. RECOMMENDED: Call read_file first to see existing frontmatter before updating. The file_path must be an exact vault-relative path (from the vault context or get_current_note). This action requires user approval.",
+			"parameters": {
+				"type": "object",
+				"required": ["file_path", "properties"],
+				"properties": {
+					"file_path": {
+						"type": "string",
+						"description": "The vault-relative path to the file (e.g. 'folder/note.md')."
+					},
+					"properties": {
+						"type": "string",
+						"description": "A JSON object of frontmatter key-value pairs to set. Example: {\"tags\": [\"ai\", \"research\"], \"category\": \"notes\", \"status\": \"draft\"}. Set a value to null to remove that property."
+					}
+				}
+			}
+		}
+	}
+}

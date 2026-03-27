@@ -1,0 +1,28 @@
+{
+	"id": "move_file",
+	"label": "Move/Rename File",
+	"description": "Move or rename a file and auto-update all links (requires approval).",
+	"friendlyName": "Move File",
+	"requiresApproval": true,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "move_file",
+			"description": "Move or rename a file in the Obsidian vault. All internal links throughout the vault are automatically updated to reflect the new path. Target folders are created automatically if they don't exist. The file_path must be an exact vault-relative path (from the vault context or get_current_note). This action requires user approval.",
+			"parameters": {
+				"type": "object",
+				"required": ["file_path", "new_path"],
+				"properties": {
+					"file_path": {
+						"type": "string",
+						"description": "The current vault-relative path of the file (e.g. 'folder/note.md')."
+					},
+					"new_path": {
+						"type": "string",
+						"description": "The new vault-relative path for the file (e.g. 'new-folder/renamed-note.md')."
+					}
+				}
+			}
+		}
+	}
+}

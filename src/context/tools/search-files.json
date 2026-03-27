@@ -1,0 +1,24 @@
+{
+	"id": "search_files",
+	"label": "Search File Names",
+	"description": "Search for files in the vault by name or path.",
+	"friendlyName": "Search Files",
+	"requiresApproval": false,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "search_files",
+			"description": "Search for files in the Obsidian vault by name or path. Returns a list of exact file paths. Use these exact paths for any subsequent file operations.",
+			"parameters": {
+				"type": "object",
+				"required": ["query"],
+				"properties": {
+					"query": {
+						"type": "string",
+						"description": "The search query to match against file names and paths."
+					}
+				}
+			}
+		}
+	}
+}

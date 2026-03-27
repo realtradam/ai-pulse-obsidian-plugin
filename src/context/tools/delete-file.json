@@ -1,0 +1,24 @@
+{
+	"id": "delete_file",
+	"label": "Delete File",
+	"description": "Delete a file from the vault (requires approval).",
+	"friendlyName": "Delete File",
+	"requiresApproval": true,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "delete_file",
+			"description": "Delete a file from the Obsidian vault. The file is moved to the system trash. The file_path must be an exact vault-relative path (from the vault context or get_current_note). This action requires user approval.",
+			"parameters": {
+				"type": "object",
+				"required": ["file_path"],
+				"properties": {
+					"file_path": {
+						"type": "string",
+						"description": "The vault-relative path to the file to delete (e.g. 'folder/note.md')."
+					}
+				}
+			}
+		}
+	}
+}

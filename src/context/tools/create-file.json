@@ -1,0 +1,28 @@
+{
+	"id": "create_file",
+	"label": "Create File",
+	"description": "Create a new file in the vault (requires approval).",
+	"friendlyName": "Create File",
+	"requiresApproval": true,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "create_file",
+			"description": "Create a new file in the Obsidian vault. Parent folders are created automatically if they don't exist. Fails if a file already exists at the path — use edit_file to modify existing files. This action requires user approval.",
+			"parameters": {
+				"type": "object",
+				"required": ["file_path"],
+				"properties": {
+					"file_path": {
+						"type": "string",
+						"description": "The vault-relative path for the new file (e.g. 'folder/new-note.md')."
+					},
+					"content": {
+						"type": "string",
+						"description": "The text content to write to the new file. Defaults to empty string if not provided."
+					}
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,13 @@
+{
+	"prefix": "VAULT CONTEXT (auto-injected summary of the user's Obsidian vault):",
+	"fields": {
+		"vaultName": "Vault name: {vaultName}",
+		"totalNotes": "Total notes: {totalNotes}",
+		"totalFolders": "Total folders: {totalFolders}"
+	},
+	"sections": {
+		"folderTree": "Folder structure:\n```\n{folderTree}\n```",
+		"tagTaxonomy": "Tags in use:\n{tagTaxonomy}",
+		"recentFiles": "Recently modified notes:\n{recentFiles}"
+	}
+}

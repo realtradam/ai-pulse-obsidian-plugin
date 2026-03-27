@@ -1,0 +1,25 @@
+{
+	"id": "batch_edit_file",
+	"label": "Batch Edit Files",
+	"description": "Edit multiple files at once (requires approval).",
+	"friendlyName": "Batch Edit Files",
+	"requiresApproval": true,
+	"batchOf": "edit_file",
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "batch_edit_file",
+			"description": "Edit multiple files in the Obsidian vault in a single call. Each operation performs a find-and-replace on one file. IMPORTANT: You MUST call read_file on each target file BEFORE using this tool. Copy the exact text from read_file output for each old_text. If some operations fail, the rest continue and per-file results are reported. Use this instead of calling edit_file repeatedly when making changes across multiple files. This action requires user approval for the entire batch.",
+			"parameters": {
+				"type": "object",
+				"required": ["operations"],
+				"properties": {
+					"operations": {
+						"type": "string",
+						"description": "A JSON array of edit operations. Each object must have \"file_path\", \"old_text\", and \"new_text\". Example: [{\"file_path\": \"note1.md\", \"old_text\": \"old content\", \"new_text\": \"new content\"}, {\"file_path\": \"note2.md\", \"old_text\": \"foo\", \"new_text\": \"bar\"}]"
+					}
+				}
+			}
+		}
+	}
+}

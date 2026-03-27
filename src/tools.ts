@@ -1,6 +1,23 @@
 import type { App } from "obsidian";
 import { TFile } from "obsidian";
 
+// Tool context JSON imports
+import searchFilesCtx from "./context/tools/search-files.json";
+import readFileCtx from "./context/tools/read-file.json";
+import deleteFileCtx from "./context/tools/delete-file.json";
+import getCurrentNoteCtx from "./context/tools/get-current-note.json";
+import editFileCtx from "./context/tools/edit-file.json";
+import grepSearchCtx from "./context/tools/grep-search.json";
+import createFileCtx from "./context/tools/create-file.json";
+import moveFileCtx from "./context/tools/move-file.json";
+import setFrontmatterCtx from "./context/tools/set-frontmatter.json";
+import batchSearchFilesCtx from "./context/tools/batch-search-files.json";
+import batchGrepSearchCtx from "./context/tools/batch-grep-search.json";
+import batchDeleteFileCtx from "./context/tools/batch-delete-file.json";
+import batchMoveFileCtx from "./context/tools/batch-move-file.json";
+import batchSetFrontmatterCtx from "./context/tools/batch-set-frontmatter.json";
+import batchEditFileCtx from "./context/tools/batch-edit-file.json";
+
 /**
  * Schema for an Ollama tool definition (function calling).
  */
@@ -15,6 +32,28 @@ export interface OllamaToolDefinition {
 			properties: Record<string, { type: string; description: string }>;
 		};
 	};
+}
+
+/**
+ * Shape of a tool context JSON file.
+ */
+interface ToolContext {
+	id: string;
+	label: string;
+	description: string;
+	friendlyName: string;
+	requiresApproval: boolean;
+	batchOf?: string;
+	definition: OllamaToolDefinition;
+}
+
+/**
+ * Cast a tool context JSON import to the ToolContext type.
+ * The JSON imports are typed as their literal shapes; this asserts
+ * they conform to the ToolContext interface at the boundary.
+ */
+function asToolContext(json: Record<string, unknown>): ToolContext {
+	return json as unknown as ToolContext;
 }
 
 /**
@@ -621,14 +660,13 @@ async function executeBatchEditFile(app: App, args: Record<string, unknown>): Pr
 
 /**
  * All available tools for the plugin.
+ * Metadata (id, label, description, friendlyName, requiresApproval, batchOf, definition)
+ * is loaded from JSON context files in src/context/tools/.
+ * Only runtime logic (summarize, summarizeResult, approvalMessage, execute) is defined here.
  */
 export const TOOL_REGISTRY: ToolEntry[] = [
 	{
-		id: "search_files",
-		label: "Search File Names",
-		description: "Search for files in the vault by name or path.",
-		friendlyName: "Search Files",
-		requiresApproval: false,
+		...asToolContext(searchFilesCtx as Record<string, unknown>),
 		summarize: (args) => {
 			const query = typeof args.query === "string" ? args.query : "";
 			if (query === "" && args.queries !== undefined) {
@@ -649,31 +687,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const count = lines.length - (moreMatch !== null ? 1 : 0) + extraCount;
 			return `${count} result${count === 1 ? "" : "s"} found`;
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "search_files",
-				description: "Search for files in the Obsidian vault by name or path. Returns a list of exact file paths. Use these exact paths for any subsequent file operations.",
-				parameters: {
-					type: "object",
-					required: ["query"],
-					properties: {
-						query: {
-							type: "string",
-							description: "The search query to match against file names and paths.",
-						},
-					},
-				},
-			},
-		},
 		execute: executeSearchFiles,
 	},
 	{
-		id: "read_file",
-		label: "Read File Contents",
-		description: "Read the full text content of a file in the vault.",
-		friendlyName: "Read File",
-		requiresApproval: false,
+		...asToolContext(readFileCtx as Record<string, unknown>),
 		summarize: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "";
 			return `"/${filePath}"`;
@@ -685,31 +702,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const lines = result.split("\n").length;
 			return `${lines} line${lines === 1 ? "" : "s"} read`;
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "read_file",
-				description: "Read the full text content of a file in the Obsidian vault. If the file has YAML frontmatter, it is also returned as a parsed JSON block at the top of the output. The file_path must be an exact path as returned by search_files.",
-				parameters: {
-					type: "object",
-					required: ["file_path"],
-					properties: {
-						file_path: {
-							type: "string",
-							description: "The vault-relative path to the file (e.g. 'folder/note.md').",
-						},
-					},
-				},
-			},
-		},
 		execute: executeReadFile,
 	},
 	{
-		id: "delete_file",
-		label: "Delete File",
-		description: "Delete a file from the vault (requires approval).",
-		friendlyName: "Delete File",
-		requiresApproval: true,
+		...asToolContext(deleteFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
 			return `Delete "${filePath}"?`;
@@ -727,31 +723,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			return "File deleted";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "delete_file",
-				description: "Delete a file from the Obsidian vault. The file is moved to the system trash. The file_path must be an exact path as returned by search_files. This action requires user approval.",
-				parameters: {
-					type: "object",
-					required: ["file_path"],
-					properties: {
-						file_path: {
-							type: "string",
-							description: "The vault-relative path to the file to delete (e.g. 'folder/note.md').",
-						},
-					},
-				},
-			},
-		},
 		execute: executeDeleteFile,
 	},
 	{
-		id: "get_current_note",
-		label: "Get Current Note",
-		description: "Get the file path of the currently open note.",
-		friendlyName: "Get Current Note",
-		requiresApproval: false,
+		...asToolContext(getCurrentNoteCtx as Record<string, unknown>),
 		summarize: () => "Checking active note",
 		summarizeResult: (result) => {
 			if (result.startsWith("Error")) {
@@ -759,26 +734,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			return `"/${result}"`;
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "get_current_note",
-				description: "Get the vault-relative file path of the note currently open in the editor. Use this to find out which note the user is looking at. Returns an exact path that can be used with read_file or edit_file.",
-				parameters: {
-					type: "object",
-					required: [],
-					properties: {},
-				},
-			},
-		},
 		execute: executeGetCurrentNote,
 	},
 	{
-		id: "edit_file",
-		label: "Edit File",
-		description: "Find and replace text in a vault file (requires approval).",
-		friendlyName: "Edit File",
-		requiresApproval: true,
+		...asToolContext(editFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
 			return `Edit "${filePath}"?`;
@@ -796,47 +755,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			return "File edited";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "edit_file",
-				description: "Edit a file in the Obsidian vault by finding and replacing text. " +
-					"IMPORTANT: You MUST call read_file on the target file BEFORE calling edit_file so you can see its exact current content. " +
-					"Copy the exact text you want to change from the read_file output and use it as old_text. " +
-					"old_text must match a passage in the file exactly (including whitespace and newlines). " +
-					"Only the first occurrence of old_text is replaced with new_text. " +
-					"SPECIAL CASE: If the file is empty (read_file returned no content), set old_text to an empty string to write initial content. " +
-					"If old_text is empty but the file is NOT empty, the edit will be rejected. " +
-					"The file_path must be an exact path from search_files or get_current_note. " +
-					"This action requires user approval.",
-				parameters: {
-					type: "object",
-					required: ["file_path", "old_text", "new_text"],
-					properties: {
-						file_path: {
-							type: "string",
-							description: "The vault-relative path to the file (e.g. 'folder/note.md').",
-						},
-						old_text: {
-							type: "string",
-							description: "The exact text to find in the file, copied verbatim from read_file output. Include enough surrounding lines to uniquely identify the location. Preserve all whitespace and newlines exactly. Only set to an empty string when the file itself is empty.",
-						},
-						new_text: {
-							type: "string",
-							description: "The text to replace old_text with. Use an empty string to delete the matched text.",
-						},
-					},
-				},
-			},
-		},
 		execute: executeEditFile,
 	},
 	{
-		id: "grep_search",
-		label: "Search File Contents",
-		description: "Search for text across all markdown files in the vault.",
-		friendlyName: "Search Contents",
-		requiresApproval: false,
+		...asToolContext(grepSearchCtx as Record<string, unknown>),
 		summarize: (args) => {
 			const query = typeof args.query === "string" ? args.query : "";
 			const filePattern = typeof args.file_pattern === "string" ? args.file_pattern : "";
@@ -858,35 +780,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const count = cappedMatch !== null ? `${cappedMatch[1] ?? "?"}+` : `${lines.length}`;
 			return `${count} match${lines.length === 1 ? "" : "es"} found`;
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "grep_search",
-				description: "Search for a text string across all markdown file contents in the vault. Returns matching lines with file paths and line numbers (e.g. 'folder/note.md:12: matching line'). Case-insensitive. Optionally filter by file path pattern.",
-				parameters: {
-					type: "object",
-					required: ["query"],
-					properties: {
-						query: {
-							type: "string",
-							description: "The text to search for in file contents. Case-insensitive.",
-						},
-						file_pattern: {
-							type: "string",
-							description: "Optional filter: only search files whose path contains this string (e.g. 'journal/' or 'project').",
-						},
-					},
-				},
-			},
-		},
 		execute: executeGrepSearch,
 	},
 	{
-		id: "create_file",
-		label: "Create File",
-		description: "Create a new file in the vault (requires approval).",
-		friendlyName: "Create File",
-		requiresApproval: true,
+		...asToolContext(createFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
 			return `Create "${filePath}"?`;
@@ -904,35 +801,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			return "File created";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "create_file",
-				description: "Create a new file in the Obsidian vault. Parent folders are created automatically if they don't exist. Fails if a file already exists at the path — use edit_file to modify existing files. This action requires user approval.",
-				parameters: {
-					type: "object",
-					required: ["file_path"],
-					properties: {
-						file_path: {
-							type: "string",
-							description: "The vault-relative path for the new file (e.g. 'folder/new-note.md').",
-						},
-						content: {
-							type: "string",
-							description: "The text content to write to the new file. Defaults to empty string if not provided.",
-						},
-					},
-				},
-			},
-		},
 		execute: executeCreateFile,
 	},
 	{
-		id: "move_file",
-		label: "Move/Rename File",
-		description: "Move or rename a file and auto-update all links (requires approval).",
-		friendlyName: "Move File",
-		requiresApproval: true,
+		...asToolContext(moveFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
 			const newPath = typeof args.new_path === "string" ? args.new_path : "unknown";
@@ -941,7 +813,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 		summarize: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "";
 			const newPath = typeof args.new_path === "string" ? args.new_path : "";
-			return `"/${filePath}" → "/${newPath}"`;
+			return `"/${filePath}" \u2192 "/${newPath}"`;
 		},
 		summarizeResult: (result) => {
 			if (result.startsWith("Error")) {
@@ -952,35 +824,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			return "File moved";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "move_file",
-				description: "Move or rename a file in the Obsidian vault. All internal links throughout the vault are automatically updated to reflect the new path. Target folders are created automatically if they don't exist. The file_path must be an exact path as returned by search_files. This action requires user approval.",
-				parameters: {
-					type: "object",
-					required: ["file_path", "new_path"],
-					properties: {
-						file_path: {
-							type: "string",
-							description: "The current vault-relative path of the file (e.g. 'folder/note.md').",
-						},
-						new_path: {
-							type: "string",
-							description: "The new vault-relative path for the file (e.g. 'new-folder/renamed-note.md').",
-						},
-					},
-				},
-			},
-		},
 		execute: executeMoveFile,
 	},
 	{
-		id: "set_frontmatter",
-		label: "Set Frontmatter",
-		description: "Add or update YAML frontmatter properties (requires approval).",
-		friendlyName: "Set Frontmatter",
-		requiresApproval: true,
+		...asToolContext(setFrontmatterCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
 			const props = typeof args.properties === "object" && args.properties !== null
@@ -993,7 +840,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const props = typeof args.properties === "object" && args.properties !== null
 				? Object.keys(args.properties as Record<string, unknown>)
 				: [];
-			return `"/${filePath}" — ${props.join(", ")}`;
+			return `"/${filePath}" \u2014 ${props.join(", ")}`;
 		},
 		summarizeResult: (result) => {
 			if (result.startsWith("Error")) {
@@ -1004,46 +851,11 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			return "Frontmatter updated";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "set_frontmatter",
-				description: "Add or update YAML frontmatter properties on a note. " +
-					"Pass a JSON object of key-value pairs to set. " +
-					"Existing properties not mentioned are left unchanged. " +
-					"Set a value to null to remove that property. " +
-					"Use this for tags, aliases, categories, dates, or any custom metadata. " +
-					"For tags, use an array of strings (e.g. [\"ai\", \"research\"]). " +
-					"This is safer than edit_file for metadata changes because it preserves YAML formatting. " +
-					"RECOMMENDED: Call read_file first to see existing frontmatter before updating. " +
-					"The file_path must be an exact path from search_files or get_current_note. " +
-					"This action requires user approval.",
-				parameters: {
-					type: "object",
-					required: ["file_path", "properties"],
-					properties: {
-						file_path: {
-							type: "string",
-							description: "The vault-relative path to the file (e.g. 'folder/note.md').",
-						},
-						properties: {
-							type: "string",
-							description: 'A JSON object of frontmatter key-value pairs to set. Example: {"tags": ["ai", "research"], "category": "notes", "status": "draft"}. Set a value to null to remove that property.',
-						},
-					},
-				},
-			},
-		},
 		execute: executeSetFrontmatter,
 	},
 	// --- Batch tools ---
 	{
-		id: "batch_search_files",
-		label: "Batch Search File Names",
-		description: "Run multiple file-name searches in one call.",
-		friendlyName: "Batch Search Files",
-		requiresApproval: false,
-		batchOf: "search_files",
+		...asToolContext(batchSearchFilesCtx as Record<string, unknown>),
 		summarize: (args) => {
 			const queries = parseArrayArg(args.queries);
 			const count = queries !== null ? queries.length : 0;
@@ -1054,32 +866,10 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const sections = result.split("--- Query").length - 1;
 			return `${sections} search${sections === 1 ? "" : "es"} completed`;
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "batch_search_files",
-				description: "Run multiple file-name searches in a single call. Each query searches vault file names/paths independently. Use this when you need to search for several different terms at once instead of calling search_files repeatedly.",
-				parameters: {
-					type: "object",
-					required: ["queries"],
-					properties: {
-						queries: {
-							type: "string",
-							description: 'A JSON array of search query strings. Example: ["meeting notes", "project plan", "2024"]',
-						},
-					},
-				},
-			},
-		},
 		execute: executeBatchSearchFiles,
 	},
 	{
-		id: "batch_grep_search",
-		label: "Batch Search File Contents",
-		description: "Run multiple content searches in one call.",
-		friendlyName: "Batch Search Contents",
-		requiresApproval: false,
-		batchOf: "grep_search",
+		...asToolContext(batchGrepSearchCtx as Record<string, unknown>),
 		summarize: (args) => {
 			const queries = parseArrayArg(args.queries);
 			const count = queries !== null ? queries.length : 0;
@@ -1090,36 +880,14 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const sections = result.split("--- Query").length - 1;
 			return `${sections} search${sections === 1 ? "" : "es"} completed`;
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "batch_grep_search",
-				description: "Run multiple content searches across vault markdown files in a single call. Each query searches independently. Use this when you need to search for several different text patterns at once instead of calling grep_search repeatedly.",
-				parameters: {
-					type: "object",
-					required: ["queries"],
-					properties: {
-						queries: {
-							type: "string",
-							description: 'A JSON array of query objects. Each object must have a "query" field and optionally a "file_pattern" field. Example: [{"query": "TODO", "file_pattern": "projects/"}, {"query": "meeting agenda"}]',
-						},
-					},
-				},
-			},
-		},
 		execute: executeBatchGrepSearch,
 	},
 	{
-		id: "batch_delete_file",
-		label: "Batch Delete Files",
-		description: "Delete multiple files at once (requires approval).",
-		friendlyName: "Batch Delete Files",
-		requiresApproval: true,
-		batchOf: "delete_file",
+		...asToolContext(batchDeleteFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const filePaths = parseArrayArg(args.file_paths);
 			if (filePaths === null || filePaths.length === 0) return "Delete files?";
-			const list = filePaths.map((fp) => `  • ${typeof fp === "string" ? fp : "(invalid)"}`);
+			const list = filePaths.map((fp) => `  \u2022 ${typeof fp === "string" ? fp : "(invalid)"}`);
 			return `Delete ${filePaths.length} file${filePaths.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
 		summarize: (args) => {
@@ -1134,41 +902,19 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			if (match !== null) return `${match[1]} deleted, ${match[2]} failed`;
 			return "Batch delete complete";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "batch_delete_file",
-				description: "Delete multiple files from the Obsidian vault in a single call. Files are moved to the system trash. If some files fail (e.g. not found), the operation continues with the remaining files and reports per-file results. All file paths must be exact paths as returned by search_files. This action requires user approval for the entire batch.",
-				parameters: {
-					type: "object",
-					required: ["file_paths"],
-					properties: {
-						file_paths: {
-							type: "string",
-							description: 'A JSON array of vault-relative file paths to delete. Example: ["folder/note1.md", "folder/note2.md"]',
-						},
-					},
-				},
-			},
-		},
 		execute: executeBatchDeleteFile,
 	},
 	{
-		id: "batch_move_file",
-		label: "Batch Move/Rename Files",
-		description: "Move or rename multiple files at once (requires approval).",
-		friendlyName: "Batch Move Files",
-		requiresApproval: true,
-		batchOf: "move_file",
+		...asToolContext(batchMoveFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const operations = parseArrayArg(args.operations);
 			if (operations === null || operations.length === 0) return "Move files?";
 			const list = operations.map((op) => {
-				if (typeof op !== "object" || op === null) return "  • (invalid entry)";
+				if (typeof op !== "object" || op === null) return "  \u2022 (invalid entry)";
 				const o = op as Record<string, unknown>;
 				const from = typeof o.file_path === "string" ? o.file_path : "?";
 				const to = typeof o.new_path === "string" ? o.new_path : "?";
-				return `  • ${from} → ${to}`;
+				return `  \u2022 ${from} \u2192 ${to}`;
 			});
 			return `Move ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
@@ -1184,37 +930,15 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			if (match !== null) return `${match[1]} moved, ${match[2]} failed`;
 			return "Batch move complete";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "batch_move_file",
-				description: "Move or rename multiple files in the Obsidian vault in a single call. All internal links are automatically updated for each file. If some operations fail, the rest continue and per-file results are reported. Target folders are created automatically. All file paths must be exact paths as returned by search_files. This action requires user approval for the entire batch.",
-				parameters: {
-					type: "object",
-					required: ["operations"],
-					properties: {
-						operations: {
-							type: "string",
-							description: 'A JSON array of move operations. Each object must have "file_path" (current path) and "new_path" (destination). Example: [{"file_path": "old/note.md", "new_path": "new/note.md"}, {"file_path": "a.md", "new_path": "archive/a.md"}]',
-						},
-					},
-				},
-			},
-		},
 		execute: executeBatchMoveFile,
 	},
 	{
-		id: "batch_set_frontmatter",
-		label: "Batch Set Frontmatter",
-		description: "Update frontmatter on multiple files at once (requires approval).",
-		friendlyName: "Batch Set Frontmatter",
-		requiresApproval: true,
-		batchOf: "set_frontmatter",
+		...asToolContext(batchSetFrontmatterCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const operations = parseArrayArg(args.operations);
 			if (operations === null || operations.length === 0) return "Update frontmatter?";
 			const list = operations.map((op) => {
-				if (typeof op !== "object" || op === null) return "  • (invalid entry)";
+				if (typeof op !== "object" || op === null) return "  \u2022 (invalid entry)";
 				const o = op as Record<string, unknown>;
 				const fp = typeof o.file_path === "string" ? o.file_path : "?";
 				let propsStr = "";
@@ -1226,7 +950,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 						propsStr = Object.keys(parsed).join(", ");
 					} catch { propsStr = "(properties)"; }
 				}
-				return `  • ${fp}: ${propsStr}`;
+				return `  \u2022 ${fp}: ${propsStr}`;
 			});
 			return `Update frontmatter on ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
@@ -1242,46 +966,18 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			if (match !== null) return `${match[1]} updated, ${match[2]} failed`;
 			return "Batch frontmatter update complete";
 		},
-		definition: {
-			type: "function",
-			function: {
-				name: "batch_set_frontmatter",
-				description: "Update YAML frontmatter properties on multiple files in a single call. " +
-					"Each operation specifies a file and the properties to set. " +
-					"Existing properties not mentioned are left unchanged. Set a value to null to remove it. " +
-					"If some operations fail, the rest continue and per-file results are reported. " +
-					"Use this instead of calling set_frontmatter repeatedly when updating multiple files. " +
-					"RECOMMENDED: Read files first to see existing frontmatter before updating. " +
-					"This action requires user approval for the entire batch.",
-				parameters: {
-					type: "object",
-					required: ["operations"],
-					properties: {
-						operations: {
-							type: "string",
-							description: 'A JSON array of frontmatter operations. Each object must have "file_path" and "properties" (a JSON object of key-value pairs). Example: [{"file_path": "note1.md", "properties": {"tags": ["ai"], "status": "done"}}, {"file_path": "note2.md", "properties": {"tags": ["research"]}}]',
-						},
-					},
-				},
-			},
-		},
 		execute: executeBatchSetFrontmatter,
 	},
 	{
-		id: "batch_edit_file",
-		label: "Batch Edit Files",
-		description: "Edit multiple files at once (requires approval).",
-		friendlyName: "Batch Edit Files",
-		requiresApproval: true,
-		batchOf: "edit_file",
+		...asToolContext(batchEditFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
 			const operations = parseArrayArg(args.operations);
 			if (operations === null || operations.length === 0) return "Edit files?";
 			const list = operations.map((op) => {
-				if (typeof op !== "object" || op === null) return "  • (invalid entry)";
+				if (typeof op !== "object" || op === null) return "  \u2022 (invalid entry)";
 				const o = op as Record<string, unknown>;
 				const fp = typeof o.file_path === "string" ? o.file_path : "?";
-				return `  • ${fp}`;
+				return `  \u2022 ${fp}`;
 			});
 			return `Edit ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
@@ -1296,29 +992,6 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			const match = result.match(/(\d+) succeeded, (\d+) failed/);
 			if (match !== null) return `${match[1]} edited, ${match[2]} failed`;
 			return "Batch edit complete";
-		},
-		definition: {
-			type: "function",
-			function: {
-				name: "batch_edit_file",
-				description: "Edit multiple files in the Obsidian vault in a single call. " +
-					"Each operation performs a find-and-replace on one file. " +
-					"IMPORTANT: You MUST call read_file on each target file BEFORE using this tool. " +
-					"Copy the exact text from read_file output for each old_text. " +
-					"If some operations fail, the rest continue and per-file results are reported. " +
-					"Use this instead of calling edit_file repeatedly when making changes across multiple files. " +
-					"This action requires user approval for the entire batch.",
-				parameters: {
-					type: "object",
-					required: ["operations"],
-					properties: {
-						operations: {
-							type: "string",
-							description: 'A JSON array of edit operations. Each object must have "file_path", "old_text", and "new_text". Example: [{"file_path": "note1.md", "old_text": "old content", "new_text": "new content"}, {"file_path": "note2.md", "old_text": "foo", "new_text": "bar"}]',
-						},
-					},
-				},
-			},
 		},
 		execute: executeBatchEditFile,
 	},

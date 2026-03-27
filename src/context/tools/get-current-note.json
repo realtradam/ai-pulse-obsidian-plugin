@@ -1,0 +1,19 @@
+{
+	"id": "get_current_note",
+	"label": "Get Current Note",
+	"description": "Get the file path of the currently open note.",
+	"friendlyName": "Get Current Note",
+	"requiresApproval": false,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "get_current_note",
+			"description": "Get the vault-relative file path of the note currently open in the editor. Use this to find out which note the user is looking at. Returns an exact path that can be used with read_file or edit_file.",
+			"parameters": {
+				"type": "object",
+				"required": [],
+				"properties": {}
+			}
+		}
+	}
+}

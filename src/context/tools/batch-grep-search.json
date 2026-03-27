@@ -1,0 +1,25 @@
+{
+	"id": "batch_grep_search",
+	"label": "Batch Search File Contents",
+	"description": "Run multiple content searches in one call.",
+	"friendlyName": "Batch Search Contents",
+	"requiresApproval": false,
+	"batchOf": "grep_search",
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "batch_grep_search",
+			"description": "Run multiple content searches across vault markdown files in a single call. Each query searches independently. Use this when you need to search for several different text patterns at once instead of calling grep_search repeatedly.",
+			"parameters": {
+				"type": "object",
+				"required": ["queries"],
+				"properties": {
+					"queries": {
+						"type": "string",
+						"description": "A JSON array of query objects. Each object must have a \"query\" field and optionally a \"file_pattern\" field. Example: [{\"query\": \"TODO\", \"file_pattern\": \"projects/\"}, {\"query\": \"meeting agenda\"}]"
+					}
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,28 @@
+{
+	"id": "grep_search",
+	"label": "Search File Contents",
+	"description": "Search for text across all markdown files in the vault.",
+	"friendlyName": "Search Contents",
+	"requiresApproval": false,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "grep_search",
+			"description": "Search for a text string across all markdown file contents in the vault. Returns matching lines with file paths and line numbers (e.g. 'folder/note.md:12: matching line'). Case-insensitive. Optionally filter by file path pattern.",
+			"parameters": {
+				"type": "object",
+				"required": ["query"],
+				"properties": {
+					"query": {
+						"type": "string",
+						"description": "The text to search for in file contents. Case-insensitive."
+					},
+					"file_pattern": {
+						"type": "string",
+						"description": "Optional filter: only search files whose path contains this string (e.g. 'journal/' or 'project')."
+					}
+				}
+			}
+		}
+	}
+}

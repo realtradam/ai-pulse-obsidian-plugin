@@ -1,4 +1,5 @@
 import type { App } from "obsidian";
+import vaultContextTemplate from "./context/vault-context-template.json";
 
 /**
  * Collected vault context summary injected into the AI system prompt.
@@ -152,21 +153,23 @@ export function collectVaultContext(app: App, maxRecentFiles: number): VaultCont
 }
 
 /**
- * Format the vault context into a system prompt block.
+ * Format the vault context into a system prompt block using the JSON template.
  */
 export function formatVaultContext(ctx: VaultContext): string {
-	return (
-		"VAULT CONTEXT (auto-injected summary of the user's Obsidian vault):\n\n" +
-		`Vault name: ${ctx.vaultName}\n` +
-		`Total notes: ${ctx.totalNotes}\n` +
-		`Total folders: ${ctx.totalFolders}\n\n` +
-		"Folder structure:\n" +
-		"```\n" +
-		ctx.folderTree + "\n" +
-		"```\n\n" +
-		"Tags in use:\n" +
-		ctx.tagTaxonomy + "\n\n" +
-		"Recently modified notes:\n" +
-		ctx.recentFiles
-	);
+	const t = vaultContextTemplate;
+	const lines: string[] = [];
+
+	lines.push(t.prefix);
+	lines.push("");
+	lines.push(t.fields.vaultName.replace("{vaultName}", ctx.vaultName));
+	lines.push(t.fields.totalNotes.replace("{totalNotes}", String(ctx.totalNotes)));
+	lines.push(t.fields.totalFolders.replace("{totalFolders}", String(ctx.totalFolders)));
+	lines.push("");
+	lines.push(t.sections.folderTree.replace("{folderTree}", ctx.folderTree));
+	lines.push("");
+	lines.push(t.sections.tagTaxonomy.replace("{tagTaxonomy}", ctx.tagTaxonomy));
+	lines.push("");
+	lines.push(t.sections.recentFiles.replace("{recentFiles}", ctx.recentFiles));
+
+	return lines.join("\n");
 }

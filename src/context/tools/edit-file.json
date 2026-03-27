@@ -1,0 +1,32 @@
+{
+	"id": "edit_file",
+	"label": "Edit File",
+	"description": "Find and replace text in a vault file (requires approval).",
+	"friendlyName": "Edit File",
+	"requiresApproval": true,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "edit_file",
+			"description": "Edit a file in the Obsidian vault by finding and replacing text. IMPORTANT: You MUST call read_file on the target file BEFORE calling edit_file so you can see its exact current content. Copy the exact text you want to change from the read_file output and use it as old_text. old_text must match a passage in the file exactly (including whitespace and newlines). Only the first occurrence of old_text is replaced with new_text. SPECIAL CASE: If the file is empty (read_file returned no content), set old_text to an empty string to write initial content. If old_text is empty but the file is NOT empty, the edit will be rejected. The file_path must be an exact vault-relative path (from the vault context or get_current_note). This action requires user approval.",
+			"parameters": {
+				"type": "object",
+				"required": ["file_path", "old_text", "new_text"],
+				"properties": {
+					"file_path": {
+						"type": "string",
+						"description": "The vault-relative path to the file (e.g. 'folder/note.md')."
+					},
+					"old_text": {
+						"type": "string",
+						"description": "The exact text to find in the file, copied verbatim from read_file output. Include enough surrounding lines to uniquely identify the location. Preserve all whitespace and newlines exactly. Only set to an empty string when the file itself is empty."
+					},
+					"new_text": {
+						"type": "string",
+						"description": "The text to replace old_text with. Use an empty string to delete the matched text."
+					}
+				}
+			}
+		}
+	}
+}

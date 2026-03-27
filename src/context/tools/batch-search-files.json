@@ -1,0 +1,25 @@
+{
+	"id": "batch_search_files",
+	"label": "Batch Search File Names",
+	"description": "Run multiple file-name searches in one call.",
+	"friendlyName": "Batch Search Files",
+	"requiresApproval": false,
+	"batchOf": "search_files",
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "batch_search_files",
+			"description": "Run multiple file-name searches in a single call. Each query searches vault file names/paths independently. Use this when you need to search for several different terms at once instead of calling search_files repeatedly.",
+			"parameters": {
+				"type": "object",
+				"required": ["queries"],
+				"properties": {
+					"queries": {
+						"type": "string",
+						"description": "A JSON array of search query strings. Example: [\"meeting notes\", \"project plan\", \"2024\"]"
+					}
+				}
+			}
+		}
+	}
+}

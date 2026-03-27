@@ -1,0 +1,25 @@
+{
+	"id": "batch_set_frontmatter",
+	"label": "Batch Set Frontmatter",
+	"description": "Update frontmatter on multiple files at once (requires approval).",
+	"friendlyName": "Batch Set Frontmatter",
+	"requiresApproval": true,
+	"batchOf": "set_frontmatter",
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "batch_set_frontmatter",
+			"description": "Update YAML frontmatter properties on multiple files in a single call. Each operation specifies a file and the properties to set. Existing properties not mentioned are left unchanged. Set a value to null to remove it. If some operations fail, the rest continue and per-file results are reported. Use this instead of calling set_frontmatter repeatedly when updating multiple files. RECOMMENDED: Read files first to see existing frontmatter before updating. This action requires user approval for the entire batch.",
+			"parameters": {
+				"type": "object",
+				"required": ["operations"],
+				"properties": {
+					"operations": {
+						"type": "string",
+						"description": "A JSON array of frontmatter operations. Each object must have \"file_path\" and \"properties\" (a JSON object of key-value pairs). Example: [{\"file_path\": \"note1.md\", \"properties\": {\"tags\": [\"ai\"], \"status\": \"done\"}}, {\"file_path\": \"note2.md\", \"properties\": {\"tags\": [\"research\"]}}]"
+					}
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,115 @@
+{
+	"obsidianMarkdownRules": {
+		"header": "OBSIDIAN-SPECIFIC MARKDOWN SYNTAX:",
+		"description": "Obsidian extends standard Markdown with unique syntax. You already know standard Markdown (headings, bold, italic, lists, code blocks, tables, etc.). The rules below cover ONLY the Obsidian-specific extensions you MUST get right.",
+
+		"internalLinks": {
+			"header": "INTERNAL LINKS (WIKILINKS)",
+			"syntax": [
+				"[[Note Name]] — basic link",
+				"[[Note Name|Display Text]] — pipe separates target from display text (NO spaces around pipe)",
+				"[[Note Name#Heading]] — link to heading (hash INSIDE brackets)",
+				"[[Note Name#Heading#Subheading]] — chain hashes for nested headings",
+				"[[Note Name#^block-id]] — link to a block identifier",
+				"[[#Heading]] — link to heading in same note",
+				"[[#^block-id]] — link to block in same note"
+			],
+			"commonMistakes": [
+				"WRONG: [[Note Name | Display Text]] with spaces around pipe. CORRECT: [[Note Name|Display Text]]",
+				"WRONG: [[Note Name]](#heading) — hash goes INSIDE brackets. CORRECT: [[Note Name#heading]]"
+			]
+		},
+
+		"embeds": {
+			"header": "EMBEDDING FILES AND CONTENT — CRITICAL",
+			"description": "Add ! before a wikilink to EMBED content inline. This is the feature LLMs get wrong most often.",
+			"syntax": [
+				"![[Note Name]] — embed entire note content",
+				"![[Note Name#Heading]] — embed only that heading section",
+				"![[Note Name#^block-id]] — embed only that block",
+				"![[image.png]] — embed image",
+				"![[image.png|640x480]] — embed image with width x height",
+				"![[image.png|300]] — embed image width only (height scales)",
+				"![[recording.mp3]] — embed audio",
+				"![[document.pdf]] — embed PDF",
+				"![[document.pdf#page=3]] — embed PDF at page 3"
+			],
+			"blockIdentifiers": [
+				"A ^identifier at the end of a paragraph marks it for linking/embedding: 'My text. ^my-id'",
+				"For block quotes/callouts/tables: put ^identifier on its OWN line with blank lines before and after",
+				"Valid characters: Latin letters, numbers, and hyphens only"
+			],
+			"commonMistakes": [
+				"WRONG: ![Note](Note.md) — this is image syntax. Use ![[Note Name]] for embeds.",
+				"WRONG: {{embed: Note}} — not valid. Use ![[Note Name]].",
+				"WRONG: [[Note Name]] without ! — that is a link, not an embed. You MUST include !.",
+				"WRONG: ![[Note Name|^block-id]] — block ID goes after #. CORRECT: ![[Note Name#^block-id]]"
+			]
+		},
+
+		"frontmatter": {
+			"header": "PROPERTIES / FRONTMATTER (YAML)",
+			"description": "YAML metadata at the very top of a note, delimited by --- lines. Must be the FIRST thing in the file.",
+			"keyRules": [
+				"Tags in frontmatter do NOT use # prefix: '  - journal' NOT '  - #journal'",
+				"Internal links in properties MUST be quoted: 'link: \"[[Note Name]]\"'",
+				"Use 'tags' and 'aliases' (plural), not 'tag' or 'alias' (deprecated)",
+				"No Markdown formatting in properties — plain data only",
+				"No content or blank lines before the opening ---"
+			],
+			"example": "---\ntags:\n  - journal\n  - personal\naliases:\n  - My Journal Entry\ndate: 2024-08-21\n---"
+		},
+
+		"tags": {
+			"header": "TAGS",
+			"rules": [
+				"In body text: #tagname. In frontmatter: no # prefix.",
+				"Must contain at least one non-numerical character (#1984 invalid, #y1984 valid)",
+				"No spaces — use camelCase, snake_case, or kebab-case",
+				"Nested tags use /: #inbox/to-read",
+				"Case-insensitive: #Tag and #TAG are identical"
+			]
+		},
+
+		"callouts": {
+			"header": "CALLOUTS",
+			"description": "Styled blockquotes with a type identifier on the first line.",
+			"syntax": [
+				"> [!type] Optional Title\n> Content",
+				"> [!type]- Title — foldable, collapsed by default (NO space before -)",
+				"> [!type]+ Title — foldable, expanded by default"
+			],
+			"types": "note, abstract/summary/tldr, info, todo, tip/hint/important, success/check/done, question/help/faq, warning/caution/attention, failure/fail/missing, danger/error, bug, example, quote/cite",
+			"commonMistakes": [
+				"WRONG: > [!type] - Title (space before -). CORRECT: > [!type]- Title",
+				"WRONG: > [! type] (space inside brackets). CORRECT: > [!type]"
+			]
+		},
+
+		"obsidianOnlyFormatting": {
+			"header": "OBSIDIAN-ONLY FORMATTING",
+			"syntax": [
+				"==highlighted text== — highlight (Obsidian-specific)",
+				"%%comment text%% — comment visible only in editing view",
+				"%%\nBlock comment spanning multiple lines\n%%"
+			]
+		},
+
+		"numberedLists": {
+			"header": "NUMBERED LISTS",
+			"rules": [
+				"When writing or editing numbered lists, ALWAYS ensure consecutive numbering starting from 1.",
+				"If you insert or remove items, renumber ALL subsequent items — no gaps or duplicates."
+			]
+		},
+
+		"taskLists": {
+			"header": "TASK LISTS (OBSIDIAN-SPECIFIC STATUSES)",
+			"syntax": [
+				"- [ ] Incomplete task",
+				"- [x] Completed task",
+				"- [?] or - [-] — any character inside brackets marks custom status"
+			]
+		}
+	}
+}

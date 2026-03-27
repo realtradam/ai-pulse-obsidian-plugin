@@ -1,0 +1,25 @@
+{
+	"id": "batch_move_file",
+	"label": "Batch Move/Rename Files",
+	"description": "Move or rename multiple files at once (requires approval).",
+	"friendlyName": "Batch Move Files",
+	"requiresApproval": true,
+	"batchOf": "move_file",
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "batch_move_file",
+			"description": "Move or rename multiple files in the Obsidian vault in a single call. All internal links are automatically updated for each file. If some operations fail, the rest continue and per-file results are reported. Target folders are created automatically. All file paths must be exact vault-relative paths (from the vault context or get_current_note). This action requires user approval for the entire batch.",
+			"parameters": {
+				"type": "object",
+				"required": ["operations"],
+				"properties": {
+					"operations": {
+						"type": "string",
+						"description": "A JSON array of move operations. Each object must have \"file_path\" (current path) and \"new_path\" (destination). Example: [{\"file_path\": \"old/note.md\", \"new_path\": \"new/note.md\"}, {\"file_path\": \"a.md\", \"new_path\": \"archive/a.md\"}]"
+					}
+				}
+			}
+		}
+	}
+}

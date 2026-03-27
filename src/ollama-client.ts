@@ -2,6 +2,8 @@ import { Platform, requestUrl } from "obsidian";
 import type { App } from "obsidian";
 import type { OllamaToolDefinition } from "./tools";
 import { findToolByName } from "./tools";
+import systemPromptData from "./context/system-prompt.json";
+import markdownRulesData from "./context/obsidian-markdown-rules.json";
 
 export interface ChatMessage {
 	role: "system" | "user" | "assistant" | "tool";
@@ -103,62 +105,143 @@ interface AgentLoopOptions {
 }
 
 /**
- * System prompt injected when tools are available.
+ * Build the Obsidian Markdown rules section from the structured JSON context.
+ * Only includes Obsidian-specific syntax (wikilinks, embeds, callouts,
+ * frontmatter, tags, etc.) — standard Markdown is omitted since the model
+ * already knows it. This keeps the prompt compact.
  */
-const TOOL_SYSTEM_PROMPT =
-	"You are a helpful assistant with access to tools for interacting with an Obsidian vault. " +
-	"When you use the search_files tool, the results contain exact file paths. " +
-	"You MUST use these exact paths when calling read_file, edit_file, or referencing files. " +
-	"NEVER guess or modify file paths — always use the paths returned by search_files or get_current_note verbatim.\n\n" +
-	"LINKING TO NOTES — MANDATORY FORMAT:\n" +
-	"When referencing any note that exists in the vault, you MUST use Obsidian wiki-link syntax.\n" +
-	"FORMAT: [[exact file path without .md extension]]\n" +
-	"RULES:\n" +
-	"1. ALWAYS use the full vault-relative path minus the .md extension.\n" +
-	"   Example: a file at 'projects/2024/my-note.md' MUST be linked as [[projects/2024/my-note]].\n" +
-	"2. NEVER use just the basename when the file is inside a subfolder.\n" +
-	"   WRONG: [[my-note]]  CORRECT: [[projects/2024/my-note]]\n" +
-	"3. For files in the vault root (no folder), use just the name: [[my-note]].\n" +
-	"4. NEVER include the .md extension in the link: WRONG: [[my-note.md]]  CORRECT: [[my-note]]\n" +
-	"5. To show different display text, use a pipe: [[projects/2024/my-note|My Note]].\n" +
-	"6. Get the exact path from search_files, read_file, or get_current_note output, strip the .md extension, and use that as the link target.\n" +
-	"7. Link to notes whenever helpful — search results, related notes, files you read or edited. Links let the user click to navigate directly.\n\n" +
-	"EDITING FILES — MANDATORY WORKFLOW:\n" +
-	"The edit_file tool performs a find-and-replace. You provide old_text (the exact text currently in the file) and new_text (what to replace it with). " +
-	"If old_text does not match the file contents exactly, the edit WILL FAIL.\n" +
-	"Therefore you MUST follow this sequence every time you edit a file:\n" +
-	"1. Get the file path (use search_files or get_current_note).\n" +
-	"2. Call read_file to see the CURRENT content of the file.\n" +
-	"3. Copy the exact text you want to change from the read_file output and use it as old_text.\n" +
-	"4. Call edit_file with the correct old_text and your new_text.\n" +
-	"NEVER skip step 2. NEVER guess what the file contains — always read it first.\n" +
-	"If the file is empty (read_file returned no content), you may set old_text to an empty string to write initial content.\n" +
-	"If the file is NOT empty, old_text MUST NOT be empty — copy the exact passage you want to change from the read_file output.\n" +
-	"old_text must include enough surrounding context (a few lines) to uniquely identify the location in the file. " +
-	"Preserve the exact whitespace, indentation, and newlines from the read_file output.\n\n" +
-	"CREATING FILES:\n" +
-	"Use create_file to make new notes. It will fail if the file already exists — use edit_file for existing files. " +
-	"Parent folders are created automatically.\n\n" +
-	"MOVING/RENAMING FILES:\n" +
-	"Use move_file to move or rename a file. All [[wiki-links]] across the vault are automatically updated.\n\n" +
-	"SEARCHING FILE CONTENTS:\n" +
-	"Use grep_search to find text inside file contents (like grep). " +
-	"Use search_files to find files by name/path. Use grep_search to find files containing specific text.\n\n" +
-	"FRONTMATTER MANAGEMENT:\n" +
-	"When you read a file with read_file, its YAML frontmatter is automatically included as a parsed JSON block at the top of the output. " +
-	"Use set_frontmatter to add, update, or remove frontmatter properties (tags, aliases, categories, etc.). " +
-	"set_frontmatter is MUCH safer than edit_file for metadata changes \u2014 it preserves YAML formatting. " +
-	"ALWAYS prefer set_frontmatter over edit_file when modifying tags, aliases, or other frontmatter fields. " +
-	"RECOMMENDED: Read the file first to see existing frontmatter before calling set_frontmatter.\n\n" +
-	"Some tools (such as delete_file, edit_file, create_file, and move_file) require user approval before they execute. " +
-	"If the user declines an action, ask them why so you can better assist them.\n\n" +
-	"BATCH TOOLS:\n" +
-	"When you need to perform the same type of operation on multiple files, prefer batch tools over calling individual tools repeatedly. " +
-	"Available batch tools: batch_search_files, batch_grep_search, batch_delete_file, batch_move_file, batch_set_frontmatter, batch_edit_file. " +
-	"Batch tools accept an array of operations and execute them all in one call, reporting per-item success/failure. " +
-	"Batch tools that modify files (delete, move, edit, set_frontmatter) require a single user approval for the entire batch. " +
-	"The parameters for batch tools use JSON arrays passed as strings. " +
-	"IMPORTANT: For batch_edit_file, you MUST still read each file first to get exact content before editing.";
+function buildMarkdownRulesPrompt(): string {
+	const r = markdownRulesData.obsidianMarkdownRules;
+	const sections: string[] = [];
+
+	sections.push(`${r.header}\n${r.description}`);
+
+	const fmtList = (items: string[]): string =>
+		items.map((item) => `  - ${item}`).join("\n");
+
+	const fmtMistakes = (items: string[]): string =>
+		items.map((m, i) => `  ${i + 1}. ${m}`).join("\n");
+
+	// Internal Links
+	const il = r.internalLinks;
+	sections.push(
+		`${il.header}\n${fmtList(il.syntax)}\n` +
+		`Common mistakes:\n${fmtMistakes(il.commonMistakes)}`,
+	);
+
+	// Embeds
+	const em = r.embeds;
+	sections.push(
+		`${em.header}\n${em.description}\n${fmtList(em.syntax)}\n` +
+		`Block identifiers:\n${fmtList(em.blockIdentifiers)}\n` +
+		`Common mistakes:\n${fmtMistakes(em.commonMistakes)}`,
+	);
+
+	// Frontmatter
+	const fm = r.frontmatter;
+	sections.push(
+		`${fm.header}\n${fm.description}\n` +
+		`Key rules:\n${fmtList(fm.keyRules)}\n` +
+		`Example:\n${fm.example}`,
+	);
+
+	// Tags
+	sections.push(`${r.tags.header}\n${fmtList(r.tags.rules)}`);
+
+	// Callouts
+	const co = r.callouts;
+	sections.push(
+		`${co.header}\n${co.description}\n${fmtList(co.syntax)}\n` +
+		`Types: ${co.types}\n` +
+		`Common mistakes:\n${fmtMistakes(co.commonMistakes)}`,
+	);
+
+	// Obsidian-only formatting
+	sections.push(`${r.obsidianOnlyFormatting.header}\n${fmtList(r.obsidianOnlyFormatting.syntax)}`);
+
+	// Numbered lists
+	sections.push(`${r.numberedLists.header}\n${fmtList(r.numberedLists.rules)}`);
+
+	// Task lists
+	sections.push(`${r.taskLists.header}\n${fmtList(r.taskLists.syntax)}`);
+
+	return sections.join("\n\n");
+}
+
+/**
+ * Build the system prompt from the structured JSON context.
+ */
+function buildToolSystemPrompt(): string {
+	const p = systemPromptData.toolSystemPrompt;
+	const sections: string[] = [];
+
+	sections.push(p.intro);
+
+	// Linking to notes
+	const linkRules = p.linkingToNotes.rules
+		.map((rule, i) => `${i + 1}. ${rule}`)
+		.join("\n");
+	sections.push(
+		`${p.linkingToNotes.header}\n` +
+		`${p.linkingToNotes.description}\n` +
+		`FORMAT: ${p.linkingToNotes.format}\n` +
+		`RULES:\n${linkRules}`,
+	);
+
+	// Editing files
+	const editSteps = p.editingFiles.steps
+		.map((step, i) => `${i + 1}. ${step}`)
+		.join("\n");
+	const editWarnings = p.editingFiles.warnings.join("\n");
+	sections.push(
+		`${p.editingFiles.header}\n` +
+		`${p.editingFiles.description}\n` +
+		`Therefore you MUST follow this sequence every time you edit a file:\n${editSteps}\n` +
+		editWarnings,
+	);
+
+	// Simple sections
+	sections.push(`CREATING FILES:\n${p.creatingFiles}`);
+	sections.push(`MOVING/RENAMING FILES:\n${p.movingFiles}`);
+	sections.push(`SEARCHING FILE CONTENTS:\n${p.searchingContents}`);
+	sections.push(`FRONTMATTER MANAGEMENT:\n${p.frontmatterManagement}`);
+	sections.push(p.approvalNote);
+	sections.push(`BATCH TOOLS:\n${p.batchTools}`);
+
+	// Confirmation messages with wiki-links
+	const cl = p.confirmationLinks;
+	const clRules = cl.rules
+		.map((rule, i) => `${i + 1}. ${rule}`)
+		.join("\n");
+	sections.push(
+		`${cl.header}\n` +
+		`${cl.description}\n` +
+		`RULES:\n${clRules}\n` +
+		`WRONG: ${cl.examples.wrong}\n` +
+		`CORRECT: ${cl.examples.correct}`,
+	);
+
+	// Embed vs Copy distinction
+	const ev = p.embedVsCopy;
+	const evRules = ev.rules
+		.map((rule, i) => `${i + 1}. ${rule}`)
+		.join("\n");
+	sections.push(
+		`${ev.header}\n` +
+		`${ev.description}\n` +
+		`RULES:\n${evRules}\n` +
+		`Example: User says: "${ev.examples.userSays}"\n` +
+		`WRONG: ${ev.examples.wrong}\n` +
+		`CORRECT: ${ev.examples.correct}`,
+	);
+
+	// Obsidian Markdown rules
+	sections.push(buildMarkdownRulesPrompt());
+
+	return sections.join("\n\n");
+}
+
+const TOOL_SYSTEM_PROMPT = buildToolSystemPrompt();
 
 /**
  * Shared agent loop: injects the system prompt, calls the strategy for each
