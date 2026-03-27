@@ -32,7 +32,10 @@ function buildFolderTree(app: App): string {
 		if (!tree.has(key)) {
 			tree.set(key, []);
 		}
-		tree.get(key)!.push(folder.path);
+		const siblings = tree.get(key);
+		if (siblings !== undefined) {
+			siblings.push(folder.path);
+		}
 	}
 
 	const lines: string[] = [];
@@ -41,7 +44,8 @@ function buildFolderTree(app: App): string {
 		const children = tree.get(path) ?? [];
 		children.sort();
 		for (let i = 0; i < children.length; i++) {
-			const child = children[i];
+			const child: string | undefined = children[i];
+			if (child === undefined) continue;
 			const isLast = i === children.length - 1;
 			const connector = isLast ? "└── " : "├── ";
 			const childPrefix = isLast ? "    " : "│   ";

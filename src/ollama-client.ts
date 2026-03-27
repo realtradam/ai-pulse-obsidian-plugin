@@ -45,6 +45,34 @@ export interface ModelOptions {
 }
 
 /**
+ * Validate that a value looks like a ToolCallResponse[].
+ * Ollama returns untyped JSON, so we narrow manually.
+ */
+function parseToolCalls(value: unknown): ToolCallResponse[] {
+	if (!Array.isArray(value)) return [];
+	const result: ToolCallResponse[] = [];
+	for (const item of value) {
+		if (typeof item !== "object" || item === null) continue;
+		const obj = item as Record<string, unknown>;
+		const fn = obj.function;
+		if (typeof fn !== "object" || fn === null) continue;
+		const fnObj = fn as Record<string, unknown>;
+		if (typeof fnObj.name !== "string") continue;
+		result.push({
+			type: typeof obj.type === "string" ? obj.type : undefined,
+			function: {
+				index: typeof fnObj.index === "number" ? fnObj.index : undefined,
+				name: fnObj.name,
+				arguments: typeof fnObj.arguments === "object" && fnObj.arguments !== null
+					? fnObj.arguments as Record<string, unknown>
+					: {},
+			},
+		});
+	}
+	return result;
+}
+
+/**
  * Result returned by a chat request strategy.
  */
 interface ChatRequestResult {
@@ -353,21 +381,30 @@ export async function showModel(ollamaUrl: string, model: string): Promise<Model
 // ---------------------------------------------------------------------------
 
 /**
+ * Options for a non-streaming chat request.
+ */
+export interface ChatMessageOptions {
+	ollamaUrl: string;
+	model: string;
+	messages: ChatMessage[];
+	tools?: OllamaToolDefinition[];
+	app?: App;
+	onToolCall?: (event: ToolCallEvent) => void;
+	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>;
+	userSystemPrompt?: string;
+	vaultContext?: string;
+}
+
+/**
  * Send a chat message with optional tool-calling agent loop.
  * When tools are provided, the function handles the multi-turn tool
  * execution loop automatically and calls onToolCall for each invocation.
  */
 export async function sendChatMessage(
-	ollamaUrl: string,
-	model: string,
-	messages: ChatMessage[],
-	tools?: OllamaToolDefinition[],
-	app?: App,
-	onToolCall?: (event: ToolCallEvent) => void,
-	onApprovalRequest?: (event: ApprovalRequestEvent) => Promise<boolean>,
-	userSystemPrompt?: string,
-	vaultContext?: string,
+	opts: ChatMessageOptions,
 ): Promise<string> {
+	const { ollamaUrl, model, tools, app, userSystemPrompt, vaultContext, onToolCall, onApprovalRequest } = opts;
+
 	const sendRequest: ChatRequestStrategy = async (workingMessages) => {
 		const body: Record<string, unknown> = {
 			model,
@@ -394,7 +431,7 @@ export async function sendChatMessage(
 
 			const msg = messageObj as Record<string, unknown>;
 			const content = typeof msg.content === "string" ? msg.content : "";
-			const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls as ToolCallResponse[] : [];
+			const toolCalls = parseToolCalls(msg.tool_calls);
 
 			return { content, toolCalls };
 		} catch (err: unknown) {
@@ -406,7 +443,7 @@ export async function sendChatMessage(
 	};
 
 	return chatAgentLoop({
-		messages,
+		messages: opts.messages,
 		tools,
 		app,
 		userSystemPrompt,
@@ -548,7 +585,7 @@ function buildMobileStrategy(
 
 			const msg = messageObj as Record<string, unknown>;
 			const content = typeof msg.content === "string" ? msg.content : "";
-			const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls as ToolCallResponse[] : [];
+			const toolCalls = parseToolCalls(msg.tool_calls);
 
 			if (content !== "") {
 				onChunk(content);
@@ -624,14 +661,17 @@ function buildDesktopStreamingStrategy(
 
 		try {
 			for await (const chunk of readNdjsonStream(reader, decoder)) {
-				const msg = chunk.message as Record<string, unknown> | undefined;
-				if (msg !== undefined && msg !== null) {
+				const rawMsg: unknown = chunk.message;
+				const msg = typeof rawMsg === "object" && rawMsg !== null
+					? rawMsg as Record<string, unknown>
+					: undefined;
+				if (msg !== undefined) {
 					if (typeof msg.content === "string" && msg.content !== "") {
 						content += msg.content;
 						onChunk(msg.content);
 					}
 					if (Array.isArray(msg.tool_calls)) {
-						toolCalls.push(...(msg.tool_calls as ToolCallResponse[]));
+						toolCalls.push(...parseToolCalls(msg.tool_calls));
 					}
 				}
 			}

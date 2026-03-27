@@ -645,7 +645,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			const lines = result.split("\n").filter((l) => l.length > 0);
 			const moreMatch = result.match(/\.\.\.\s*and\s+(\d+)\s+more/);
-			const extraCount = moreMatch !== null ? parseInt(moreMatch[1], 10) : 0;
+			const extraCount = moreMatch !== null ? parseInt(moreMatch[1] ?? "0", 10) : 0;
 			const count = lines.length - (moreMatch !== null ? 1 : 0) + extraCount;
 			return `${count} result${count === 1 ? "" : "s"} found`;
 		},
@@ -855,7 +855,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			}
 			const lines = result.split("\n").filter((l) => l.length > 0 && !l.startsWith("..."));
 			const cappedMatch = result.match(/results capped at (\d+)/);
-			const count = cappedMatch !== null ? `${cappedMatch[1]}+` : `${lines.length}`;
+			const count = cappedMatch !== null ? `${cappedMatch[1] ?? "?"}+` : `${lines.length}`;
 			return `${count} match${lines.length === 1 ? "" : "es"} found`;
 		},
 		definition: {
