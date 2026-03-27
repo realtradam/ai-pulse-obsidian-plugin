@@ -84,8 +84,8 @@ function buildTagTaxonomy(app: App): string {
 		}
 
 		// Frontmatter tags
-		if (cache.frontmatter?.tags !== undefined) {
-			const fmTags = cache.frontmatter.tags;
+		if (cache.frontmatter?.['tags'] !== undefined) {
+			const fmTags = cache.frontmatter['tags'];
 			if (Array.isArray(fmTags)) {
 				for (const raw of fmTags) {
 					const tag = typeof raw === "string"

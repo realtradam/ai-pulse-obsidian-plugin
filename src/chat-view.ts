@@ -325,17 +325,19 @@ export class ChatView extends ItemView {
 			const isAbort = err instanceof DOMException && err.name === "AbortError";
 
 			// Clean up the streaming bubble
-			if (currentBubble !== null) {
-				currentBubble.removeClass("ai-pulse-streaming");
-				const errorIcon = currentBubble.querySelector(".ai-pulse-loading-icon");
+			// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+			const bubble = currentBubble as HTMLDivElement | null;
+			if (bubble !== null) {
+				bubble.removeClass("ai-pulse-streaming");
+				const errorIcon = bubble.querySelector(".ai-pulse-loading-icon");
 				if (errorIcon !== null) {
 					errorIcon.remove();
 				}
 				// Remove empty bubble, or remove partial bubble on abort
-				if (currentBubble.textContent?.trim() === "" || isAbort) {
-					currentBubble.remove();
+				if (bubble.textContent?.trim() === "" || isAbort) {
+					bubble.remove();
 				}
-				this.bubbleContent.delete(currentBubble);
+				this.bubbleContent.delete(bubble);
 			}
 
 			// Only show error UI for real errors, not user-initiated aborts
@@ -467,9 +469,9 @@ export class ChatView extends ItemView {
 
 		if (event.toolName === "edit_file") {
 			// For edit_file, show old_text / new_text in dedicated labeled blocks
-			const filePath = typeof event.args.file_path === "string" ? event.args.file_path : "";
-			const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
-			const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
+			const filePath = typeof event.args['file_path'] === "string" ? event.args['file_path'] : "";
+			const oldText = typeof event.args['old_text'] === "string" ? event.args['old_text'] : "";
+			const newText = typeof event.args['new_text'] === "string" ? event.args['new_text'] : "";
 
 			if (filePath !== "") {
 				contentInner.createEl("div", { text: `File: ${filePath}`, cls: "ai-pulse-tool-call-label" });
@@ -542,8 +544,8 @@ export class ChatView extends ItemView {
 				const contentInner = collapseContent.createDiv({ cls: "ai-pulse-collapse-content-inner" });
 
 				if (event.toolName === "edit_file") {
-					const oldText = typeof event.args.old_text === "string" ? event.args.old_text : "";
-					const newText = typeof event.args.new_text === "string" ? event.args.new_text : "";
+					const oldText = typeof event.args['old_text'] === "string" ? event.args['old_text'] : "";
+					const newText = typeof event.args['new_text'] === "string" ? event.args['new_text'] : "";
 
 					contentInner.createEl("div", { text: "Old text:", cls: "ai-pulse-tool-call-label" });
 					contentInner.createEl("pre", {
@@ -557,7 +559,7 @@ export class ChatView extends ItemView {
 						cls: "ai-pulse-tool-call-result",
 					});
 				} else if (event.toolName === "set_frontmatter") {
-					const props = event.args.properties;
+					const props = event.args['properties'];
 					const propsStr = typeof props === "object" && props !== null
 						? JSON.stringify(props, null, 2)
 						: typeof props === "string" ? props : "{}";
@@ -568,7 +570,7 @@ export class ChatView extends ItemView {
 						cls: "ai-pulse-tool-call-result",
 					});
 				} else if (event.toolName === "create_file") {
-					const content = typeof event.args.content === "string" ? event.args.content : "";
+					const content = typeof event.args['content'] === "string" ? event.args['content'] : "";
 
 					contentInner.createEl("div", { text: "Content:", cls: "ai-pulse-tool-call-label" });
 					contentInner.createEl("pre", {
@@ -617,10 +619,10 @@ export class ChatView extends ItemView {
 
 	private renderBatchDeleteApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
 		let filePaths: unknown[] = [];
-		if (Array.isArray(args.file_paths)) {
-			filePaths = args.file_paths;
-		} else if (typeof args.file_paths === "string") {
-			try { filePaths = JSON.parse(args.file_paths) as unknown[]; } catch { /* empty */ }
+		if (Array.isArray(args['file_paths'])) {
+			filePaths = args['file_paths'];
+		} else if (typeof args['file_paths'] === "string") {
+			try { filePaths = JSON.parse(args['file_paths']) as unknown[]; } catch { /* empty */ }
 		}
 
 		container.createEl("div", {
@@ -636,10 +638,10 @@ export class ChatView extends ItemView {
 
 	private renderBatchMoveApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
 		let operations: unknown[] = [];
-		if (Array.isArray(args.operations)) {
-			operations = args.operations;
-		} else if (typeof args.operations === "string") {
-			try { operations = JSON.parse(args.operations) as unknown[]; } catch { /* empty */ }
+		if (Array.isArray(args['operations'])) {
+			operations = args['operations'];
+		} else if (typeof args['operations'] === "string") {
+			try { operations = JSON.parse(args['operations']) as unknown[]; } catch { /* empty */ }
 		}
 
 		container.createEl("div", {
@@ -654,8 +656,8 @@ export class ChatView extends ItemView {
 				continue;
 			}
 			const o = op as Record<string, unknown>;
-			const from = typeof o.file_path === "string" ? o.file_path : "?";
-			const to = typeof o.new_path === "string" ? o.new_path : "?";
+			const from = typeof o['file_path'] === "string" ? o['file_path'] : "?";
+			const to = typeof o['new_path'] === "string" ? o['new_path'] : "?";
 			const li = list.createEl("li");
 			li.createSpan({ text: from, cls: "ai-pulse-batch-path" });
 			li.createSpan({ text: " \u2192 " });
@@ -665,10 +667,10 @@ export class ChatView extends ItemView {
 
 	private renderBatchSetFrontmatterApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
 		let operations: unknown[] = [];
-		if (Array.isArray(args.operations)) {
-			operations = args.operations;
-		} else if (typeof args.operations === "string") {
-			try { operations = JSON.parse(args.operations) as unknown[]; } catch { /* empty */ }
+		if (Array.isArray(args['operations'])) {
+			operations = args['operations'];
+		} else if (typeof args['operations'] === "string") {
+			try { operations = JSON.parse(args['operations']) as unknown[]; } catch { /* empty */ }
 		}
 
 		container.createEl("div", {
@@ -682,13 +684,13 @@ export class ChatView extends ItemView {
 				continue;
 			}
 			const o = op as Record<string, unknown>;
-			const fp = typeof o.file_path === "string" ? o.file_path : "?";
+			const fp = typeof o['file_path'] === "string" ? o['file_path'] : "?";
 
 			let propsStr = "{}";
-			if (typeof o.properties === "object" && o.properties !== null) {
-				propsStr = JSON.stringify(o.properties, null, 2);
-			} else if (typeof o.properties === "string") {
-				propsStr = o.properties;
+			if (typeof o['properties'] === "object" && o['properties'] !== null) {
+				propsStr = JSON.stringify(o['properties'], null, 2);
+			} else if (typeof o['properties'] === "string") {
+				propsStr = o['properties'];
 			}
 
 			container.createEl("div", { text: fp, cls: "ai-pulse-tool-call-label ai-pulse-batch-file-header" });
@@ -698,10 +700,10 @@ export class ChatView extends ItemView {
 
 	private renderBatchEditApproval(container: HTMLDivElement, args: Record<string, unknown>): void {
 		let operations: unknown[] = [];
-		if (Array.isArray(args.operations)) {
-			operations = args.operations;
-		} else if (typeof args.operations === "string") {
-			try { operations = JSON.parse(args.operations) as unknown[]; } catch { /* empty */ }
+		if (Array.isArray(args['operations'])) {
+			operations = args['operations'];
+		} else if (typeof args['operations'] === "string") {
+			try { operations = JSON.parse(args['operations']) as unknown[]; } catch { /* empty */ }
 		}
 
 		container.createEl("div", {
@@ -715,9 +717,9 @@ export class ChatView extends ItemView {
 				continue;
 			}
 			const o = op as Record<string, unknown>;
-			const fp = typeof o.file_path === "string" ? o.file_path : "?";
-			const oldText = typeof o.old_text === "string" ? o.old_text : "";
-			const newText = typeof o.new_text === "string" ? o.new_text : "";
+			const fp = typeof o['file_path'] === "string" ? o['file_path'] : "?";
+			const oldText = typeof o['old_text'] === "string" ? o['old_text'] : "";
+			const newText = typeof o['new_text'] === "string" ? o['new_text'] : "";
 
 			container.createEl("div", { text: fp, cls: "ai-pulse-tool-call-label ai-pulse-batch-file-header" });
 

@@ -79,10 +79,10 @@ export interface ToolEntry {
  * Returns a newline-separated list of vault file paths matching the query.
  */
 async function executeSearchFiles(app: App, args: Record<string, unknown>): Promise<string> {
-	const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
+	const query = typeof args["query"] === "string" ? args["query"].toLowerCase() : "";
 	if (query === "") {
 		// Detect common misuse: model passed batch_search_files params to search_files
-		if (args.queries !== undefined) {
+		if (args["queries"] !== undefined) {
 			return "Error: query parameter is required. You passed 'queries' (plural) — use search_files with a single 'query' string, or use batch_search_files for multiple queries.";
 		}
 		return "Error: query parameter is required.";
@@ -117,7 +117,7 @@ async function executeSearchFiles(app: App, args: Record<string, unknown>): Prom
  * plus parsed frontmatter as a JSON block if present.
  */
 async function executeReadFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
@@ -155,7 +155,7 @@ async function executeReadFile(app: App, args: Record<string, unknown>): Promise
  * Deletes a file by its vault path (moves to trash).
  */
 async function executeDeleteFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
@@ -179,15 +179,15 @@ async function executeDeleteFile(app: App, args: Record<string, unknown>): Promi
  * Searches file contents for a text query, returning matching lines with context.
  */
 async function executeGrepSearch(app: App, args: Record<string, unknown>): Promise<string> {
-	const query = typeof args.query === "string" ? args.query : "";
+	const query = typeof args["query"] === "string" ? args["query"] : "";
 	if (query === "") {
-		if (args.queries !== undefined) {
+		if (args["queries"] !== undefined) {
 			return "Error: query parameter is required. You passed 'queries' (plural) — use grep_search with a single 'query' string, or use batch_grep_search for multiple queries.";
 		}
 		return "Error: query parameter is required.";
 	}
 
-	const filePattern = typeof args.file_pattern === "string" ? args.file_pattern.toLowerCase() : "";
+	const filePattern = typeof args["file_pattern"] === "string" ? args["file_pattern"].toLowerCase() : "";
 	const queryLower = query.toLowerCase();
 
 	const files = app.vault.getMarkdownFiles();
@@ -236,12 +236,12 @@ async function executeGrepSearch(app: App, args: Record<string, unknown>): Promi
  * Creates a new file at the given vault path with the provided content.
  */
 async function executeCreateFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	const content = typeof args.content === "string" ? args.content : "";
+	const content = typeof args["content"] === "string" ? args["content"] : "";
 
 	// Check if file already exists
 	const existing = app.vault.getAbstractFileByPath(filePath);
@@ -273,12 +273,12 @@ async function executeCreateFile(app: App, args: Record<string, unknown>): Promi
  * Moves or renames a file, auto-updating all links.
  */
 async function executeMoveFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	const newPath = typeof args.new_path === "string" ? args.new_path : "";
+	const newPath = typeof args["new_path"] === "string" ? args["new_path"] : "";
 	if (newPath === "") {
 		return "Error: new_path parameter is required.";
 	}
@@ -330,13 +330,13 @@ async function executeGetCurrentNote(app: App, _args: Record<string, unknown>): 
  * Performs a find-and-replace on the file content using vault.process() for atomicity.
  */
 async function executeEditFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	const oldText = typeof args.old_text === "string" ? args.old_text : "";
-	const newText = typeof args.new_text === "string" ? args.new_text : "";
+	const oldText = typeof args["old_text"] === "string" ? args["old_text"] : "";
+	const newText = typeof args["new_text"] === "string" ? args["new_text"] : "";
 
 	// Reject no-op edits where old_text and new_text are identical
 	if (oldText === newText) {
@@ -394,12 +394,12 @@ async function executeEditFile(app: App, args: Record<string, unknown>): Promise
  * To remove a property, set its value to null.
  */
 async function executeSetFrontmatter(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	let properties = args.properties;
+	let properties = args["properties"];
 
 	// The model may pass properties as a JSON string — parse it
 	if (typeof properties === "string") {
@@ -481,7 +481,7 @@ function parseArrayArg(value: unknown): unknown[] | null {
  * Runs multiple search queries and returns combined results.
  */
 async function executeBatchSearchFiles(app: App, args: Record<string, unknown>): Promise<string> {
-	const queries = parseArrayArg(args.queries);
+	const queries = parseArrayArg(args["queries"]);
 	if (queries === null || queries.length === 0) {
 		return "Error: queries parameter must be a non-empty array of strings.";
 	}
@@ -502,7 +502,7 @@ async function executeBatchSearchFiles(app: App, args: Record<string, unknown>):
  * Runs multiple content searches and returns combined results.
  */
 async function executeBatchGrepSearch(app: App, args: Record<string, unknown>): Promise<string> {
-	const queries = parseArrayArg(args.queries);
+	const queries = parseArrayArg(args["queries"]);
 	if (queries === null || queries.length === 0) {
 		return "Error: queries parameter must be a non-empty array of search query objects.";
 	}
@@ -516,8 +516,8 @@ async function executeBatchGrepSearch(app: App, args: Record<string, unknown>): 
 		}
 		const queryObj = q as Record<string, unknown>;
 		const result = await executeGrepSearch(app, queryObj);
-		const queryText = typeof queryObj.query === "string" ? queryObj.query : "";
-		const filePattern = typeof queryObj.file_pattern === "string" ? ` (in "${queryObj.file_pattern}")` : "";
+		const queryText = typeof queryObj["query"] === "string" ? queryObj["query"] : "";
+		const filePattern = typeof queryObj["file_pattern"] === "string" ? ` (in "${queryObj["file_pattern"]}")` : "";
 		results.push(`--- Query ${i + 1}: "${queryText}"${filePattern} ---\n${result}`);
 	}
 
@@ -529,7 +529,7 @@ async function executeBatchGrepSearch(app: App, args: Record<string, unknown>): 
  * Deletes multiple files, continuing on failure and reporting per-file results.
  */
 async function executeBatchDeleteFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const filePaths = parseArrayArg(args.file_paths);
+	const filePaths = parseArrayArg(args["file_paths"]);
 	if (filePaths === null || filePaths.length === 0) {
 		return "Error: file_paths parameter must be a non-empty array of strings.";
 	}
@@ -558,7 +558,7 @@ async function executeBatchDeleteFile(app: App, args: Record<string, unknown>): 
  * Moves/renames multiple files, continuing on failure.
  */
 async function executeBatchMoveFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const operations = parseArrayArg(args.operations);
+	const operations = parseArrayArg(args["operations"]);
 	if (operations === null || operations.length === 0) {
 		return "Error: operations parameter must be a non-empty array of {file_path, new_path} objects.";
 	}
@@ -574,8 +574,8 @@ async function executeBatchMoveFile(app: App, args: Record<string, unknown>): Pr
 			continue;
 		}
 		const opObj = op as Record<string, unknown>;
-		const filePath = typeof opObj.file_path === "string" ? opObj.file_path : "";
-		const newPath = typeof opObj.new_path === "string" ? opObj.new_path : "";
+		const filePath = typeof opObj["file_path"] === "string" ? opObj["file_path"] : "";
+		const newPath = typeof opObj["new_path"] === "string" ? opObj["new_path"] : "";
 		const result = await executeMoveFile(app, { file_path: filePath, new_path: newPath });
 		if (result.startsWith("Error")) {
 			failures++;
@@ -594,7 +594,7 @@ async function executeBatchMoveFile(app: App, args: Record<string, unknown>): Pr
  * Sets frontmatter on multiple files, continuing on failure.
  */
 async function executeBatchSetFrontmatter(app: App, args: Record<string, unknown>): Promise<string> {
-	const operations = parseArrayArg(args.operations);
+	const operations = parseArrayArg(args["operations"]);
 	if (operations === null || operations.length === 0) {
 		return "Error: operations parameter must be a non-empty array of {file_path, properties} objects.";
 	}
@@ -610,8 +610,8 @@ async function executeBatchSetFrontmatter(app: App, args: Record<string, unknown
 			continue;
 		}
 		const opObj = op as Record<string, unknown>;
-		const filePath = typeof opObj.file_path === "string" ? opObj.file_path : "";
-		const result = await executeSetFrontmatter(app, { file_path: filePath, properties: opObj.properties });
+		const filePath = typeof opObj["file_path"] === "string" ? opObj["file_path"] : "";
+		const result = await executeSetFrontmatter(app, { file_path: filePath, properties: opObj["properties"] });
 		if (result.startsWith("Error")) {
 			failures++;
 		} else {
@@ -629,7 +629,7 @@ async function executeBatchSetFrontmatter(app: App, args: Record<string, unknown
  * Performs multiple file edits, continuing on failure.
  */
 async function executeBatchEditFile(app: App, args: Record<string, unknown>): Promise<string> {
-	const operations = parseArrayArg(args.operations);
+	const operations = parseArrayArg(args["operations"]);
 	if (operations === null || operations.length === 0) {
 		return "Error: operations parameter must be a non-empty array of {file_path, old_text, new_text} objects.";
 	}
@@ -645,11 +645,11 @@ async function executeBatchEditFile(app: App, args: Record<string, unknown>): Pr
 			continue;
 		}
 		const opObj = op as Record<string, unknown>;
-		const filePath = typeof opObj.file_path === "string" ? opObj.file_path : "";
+		const filePath = typeof opObj["file_path"] === "string" ? opObj["file_path"] : "";
 		const result = await executeEditFile(app, {
 			file_path: filePath,
-			old_text: opObj.old_text,
-			new_text: opObj.new_text,
+			old_text: opObj["old_text"],
+			new_text: opObj["new_text"],
 		});
 		if (result.startsWith("Error")) {
 			failures++;
@@ -673,8 +673,8 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(searchFilesCtx as Record<string, unknown>),
 		summarize: (args) => {
-			const query = typeof args.query === "string" ? args.query : "";
-			if (query === "" && args.queries !== undefined) {
+			const query = typeof args["query"] === "string" ? args["query"] : "";
+			if (query === "" && args["queries"] !== undefined) {
 				return "(wrong params: used 'queries' instead of 'query')";
 			}
 			return `"${query}"`;
@@ -697,7 +697,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(readFileCtx as Record<string, unknown>),
 		summarize: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 			return `"/${filePath}"`;
 		},
 		summarizeResult: (result) => {
@@ -712,11 +712,11 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(deleteFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "unknown";
 			return `Delete "${filePath}"?`;
 		},
 		summarize: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 			return `"/${filePath}"`;
 		},
 		summarizeResult: (result) => {
@@ -744,11 +744,11 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(editFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "unknown";
 			return `Edit "${filePath}"?`;
 		},
 		summarize: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 			return `"/${filePath}"`;
 		},
 		summarizeResult: (result) => {
@@ -765,9 +765,9 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(grepSearchCtx as Record<string, unknown>),
 		summarize: (args) => {
-			const query = typeof args.query === "string" ? args.query : "";
-			const filePattern = typeof args.file_pattern === "string" ? args.file_pattern : "";
-			if (query === "" && args.queries !== undefined) {
+			const query = typeof args["query"] === "string" ? args["query"] : "";
+			const filePattern = typeof args["file_pattern"] === "string" ? args["file_pattern"] : "";
+			if (query === "" && args["queries"] !== undefined) {
 				return "(wrong params: used 'queries' instead of 'query')";
 			}
 			const suffix = filePattern !== "" ? ` in "${filePattern}"` : "";
@@ -790,11 +790,11 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(createFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "unknown";
 			return `Create "${filePath}"?`;
 		},
 		summarize: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 			return `"/${filePath}"`;
 		},
 		summarizeResult: (result) => {
@@ -811,13 +811,13 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(moveFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
-			const newPath = typeof args.new_path === "string" ? args.new_path : "unknown";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "unknown";
+			const newPath = typeof args["new_path"] === "string" ? args["new_path"] : "unknown";
 			return `Move "${filePath}" to "${newPath}"?`;
 		},
 		summarize: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "";
-			const newPath = typeof args.new_path === "string" ? args.new_path : "";
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
+			const newPath = typeof args["new_path"] === "string" ? args["new_path"] : "";
 			return `"/${filePath}" \u2192 "/${newPath}"`;
 		},
 		summarizeResult: (result) => {
@@ -834,16 +834,16 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(setFrontmatterCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "unknown";
-			const props = typeof args.properties === "object" && args.properties !== null
-				? Object.keys(args.properties as Record<string, unknown>)
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "unknown";
+			const props = typeof args["properties"] === "object" && args["properties"] !== null
+				? Object.keys(args["properties"] as Record<string, unknown>)
 				: [];
 			return `Update frontmatter in "${filePath}"? Properties: ${props.join(", ")}`;
 		},
 		summarize: (args) => {
-			const filePath = typeof args.file_path === "string" ? args.file_path : "";
-			const props = typeof args.properties === "object" && args.properties !== null
-				? Object.keys(args.properties as Record<string, unknown>)
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
+			const props = typeof args["properties"] === "object" && args["properties"] !== null
+				? Object.keys(args["properties"] as Record<string, unknown>)
 				: [];
 			return `"/${filePath}" \u2014 ${props.join(", ")}`;
 		},
@@ -862,7 +862,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(batchSearchFilesCtx as Record<string, unknown>),
 		summarize: (args) => {
-			const queries = parseArrayArg(args.queries);
+			const queries = parseArrayArg(args["queries"]);
 			const count = queries !== null ? queries.length : 0;
 			return `${count} search quer${count === 1 ? "y" : "ies"}`;
 		},
@@ -876,7 +876,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(batchGrepSearchCtx as Record<string, unknown>),
 		summarize: (args) => {
-			const queries = parseArrayArg(args.queries);
+			const queries = parseArrayArg(args["queries"]);
 			const count = queries !== null ? queries.length : 0;
 			return `${count} content search${count === 1 ? "" : "es"}`;
 		},
@@ -890,13 +890,13 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(batchDeleteFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const filePaths = parseArrayArg(args.file_paths);
+			const filePaths = parseArrayArg(args["file_paths"]);
 			if (filePaths === null || filePaths.length === 0) return "Delete files?";
 			const list = filePaths.map((fp) => `  \u2022 ${typeof fp === "string" ? fp : "(invalid)"}`);
 			return `Delete ${filePaths.length} file${filePaths.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
 		summarize: (args) => {
-			const filePaths = parseArrayArg(args.file_paths);
+			const filePaths = parseArrayArg(args["file_paths"]);
 			const count = filePaths !== null ? filePaths.length : 0;
 			return `${count} file${count === 1 ? "" : "s"}`;
 		},
@@ -912,19 +912,19 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(batchMoveFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const operations = parseArrayArg(args.operations);
+			const operations = parseArrayArg(args["operations"]);
 			if (operations === null || operations.length === 0) return "Move files?";
 			const list = operations.map((op) => {
 				if (typeof op !== "object" || op === null) return "  \u2022 (invalid entry)";
 				const o = op as Record<string, unknown>;
-				const from = typeof o.file_path === "string" ? o.file_path : "?";
-				const to = typeof o.new_path === "string" ? o.new_path : "?";
+				const from = typeof o["file_path"] === "string" ? o["file_path"] : "?";
+				const to = typeof o["new_path"] === "string" ? o["new_path"] : "?";
 				return `  \u2022 ${from} \u2192 ${to}`;
 			});
 			return `Move ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
 		summarize: (args) => {
-			const operations = parseArrayArg(args.operations);
+			const operations = parseArrayArg(args["operations"]);
 			const count = operations !== null ? operations.length : 0;
 			return `${count} file${count === 1 ? "" : "s"}`;
 		},
@@ -940,18 +940,18 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(batchSetFrontmatterCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const operations = parseArrayArg(args.operations);
+			const operations = parseArrayArg(args["operations"]);
 			if (operations === null || operations.length === 0) return "Update frontmatter?";
 			const list = operations.map((op) => {
 				if (typeof op !== "object" || op === null) return "  \u2022 (invalid entry)";
 				const o = op as Record<string, unknown>;
-				const fp = typeof o.file_path === "string" ? o.file_path : "?";
+				const fp = typeof o["file_path"] === "string" ? o["file_path"] : "?";
 				let propsStr = "";
-				if (typeof o.properties === "object" && o.properties !== null) {
-					propsStr = Object.keys(o.properties as Record<string, unknown>).join(", ");
-				} else if (typeof o.properties === "string") {
+				if (typeof o["properties"] === "object" && o["properties"] !== null) {
+					propsStr = Object.keys(o["properties"] as Record<string, unknown>).join(", ");
+				} else if (typeof o["properties"] === "string") {
 					try {
-						const parsed = JSON.parse(o.properties) as Record<string, unknown>;
+						const parsed = JSON.parse(o["properties"]) as Record<string, unknown>;
 						propsStr = Object.keys(parsed).join(", ");
 					} catch { propsStr = "(properties)"; }
 				}
@@ -960,7 +960,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			return `Update frontmatter on ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
 		summarize: (args) => {
-			const operations = parseArrayArg(args.operations);
+			const operations = parseArrayArg(args["operations"]);
 			const count = operations !== null ? operations.length : 0;
 			return `${count} file${count === 1 ? "" : "s"}`;
 		},
@@ -976,18 +976,18 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 	{
 		...asToolContext(batchEditFileCtx as Record<string, unknown>),
 		approvalMessage: (args) => {
-			const operations = parseArrayArg(args.operations);
+			const operations = parseArrayArg(args["operations"]);
 			if (operations === null || operations.length === 0) return "Edit files?";
 			const list = operations.map((op) => {
 				if (typeof op !== "object" || op === null) return "  \u2022 (invalid entry)";
 				const o = op as Record<string, unknown>;
-				const fp = typeof o.file_path === "string" ? o.file_path : "?";
+				const fp = typeof o["file_path"] === "string" ? o["file_path"] : "?";
 				return `  \u2022 ${fp}`;
 			});
 			return `Edit ${operations.length} file${operations.length === 1 ? "" : "s"}?\n${list.join("\n")}`;
 		},
 		summarize: (args) => {
-			const operations = parseArrayArg(args.operations);
+			const operations = parseArrayArg(args["operations"]);
 			const count = operations !== null ? operations.length : 0;
 			return `${count} file${count === 1 ? "" : "s"}`;
 		},

@@ -56,17 +56,17 @@ function parseToolCalls(value: unknown): ToolCallResponse[] {
 	for (const item of value) {
 		if (typeof item !== "object" || item === null) continue;
 		const obj = item as Record<string, unknown>;
-		const fn = obj.function;
+		const fn = obj["function"];
 		if (typeof fn !== "object" || fn === null) continue;
 		const fnObj = fn as Record<string, unknown>;
-		if (typeof fnObj.name !== "string") continue;
+		if (typeof fnObj["name"] !== "string") continue;
 		result.push({
-			...(typeof obj.type === "string" ? { type: obj.type } : {}),
+			...(typeof obj["type"] === "string" ? { type: obj["type"] } : {}),
 			function: {
-				...(typeof fnObj.index === "number" ? { index: fnObj.index } : {}),
-				name: fnObj.name,
-				arguments: typeof fnObj.arguments === "object" && fnObj.arguments !== null
-					? fnObj.arguments as Record<string, unknown>
+				...(typeof fnObj["index"] === "number" ? { index: fnObj["index"] } : {}),
+				name: fnObj["name"],
+				arguments: typeof fnObj["arguments"] === "object" && fnObj["arguments"] !== null
+					? fnObj["arguments"] as Record<string, unknown>
 					: {},
 			},
 		});
@@ -301,13 +301,13 @@ function preValidateTool(
 // -- Individual tool validators ------------------------------------------------
 
 function preValidateEditFile(app: App, args: Record<string, unknown>): string | null {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	const oldText = typeof args.old_text === "string" ? args.old_text : "";
-	const newText = typeof args.new_text === "string" ? args.new_text : "";
+	const oldText = typeof args["old_text"] === "string" ? args["old_text"] : "";
+	const newText = typeof args["new_text"] === "string" ? args["new_text"] : "";
 	if (oldText === newText) {
 		return "Error: old_text and new_text are identical — no change would occur. Provide different text for new_text, or skip this edit.";
 	}
@@ -321,7 +321,7 @@ function preValidateEditFile(app: App, args: Record<string, unknown>): string | 
 }
 
 function preValidateCreateFile(app: App, args: Record<string, unknown>): string | null {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
@@ -335,7 +335,7 @@ function preValidateCreateFile(app: App, args: Record<string, unknown>): string 
 }
 
 function preValidateDeleteFile(app: App, args: Record<string, unknown>): string | null {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
@@ -349,12 +349,12 @@ function preValidateDeleteFile(app: App, args: Record<string, unknown>): string 
 }
 
 function preValidateMoveFile(app: App, args: Record<string, unknown>): string | null {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	const newPath = typeof args.new_path === "string" ? args.new_path : "";
+	const newPath = typeof args["new_path"] === "string" ? args["new_path"] : "";
 	if (newPath === "") {
 		return "Error: new_path parameter is required.";
 	}
@@ -373,12 +373,12 @@ function preValidateMoveFile(app: App, args: Record<string, unknown>): string | 
 }
 
 function preValidateSetFrontmatter(app: App, args: Record<string, unknown>): string | null {
-	const filePath = typeof args.file_path === "string" ? args.file_path : "";
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
 	if (filePath === "") {
 		return "Error: file_path parameter is required.";
 	}
 
-	let properties = args.properties;
+	let properties = args["properties"];
 	if (typeof properties === "string") {
 		try {
 			properties = JSON.parse(properties) as unknown;
@@ -404,7 +404,7 @@ function preValidateSetFrontmatter(app: App, args: Record<string, unknown>): str
 // -- Batch tool validators -----------------------------------------------------
 
 function preValidateBatchEditFile(app: App, args: Record<string, unknown>): string | null {
-	const operations = parseArrayArg(args.operations);
+	const operations = parseArrayArg(args["operations"]);
 	if (operations === null || operations.length === 0) {
 		return "Error: operations parameter must be a non-empty array of {file_path, old_text, new_text} objects.";
 	}
@@ -413,8 +413,8 @@ function preValidateBatchEditFile(app: App, args: Record<string, unknown>): stri
 	const allNoOps = operations.every((op) => {
 		if (typeof op !== "object" || op === null) return false;
 		const o = op as Record<string, unknown>;
-		const oldText = typeof o.old_text === "string" ? o.old_text : "";
-		const newText = typeof o.new_text === "string" ? o.new_text : "";
+		const oldText = typeof o["old_text"] === "string" ? o["old_text"] : "";
+		const newText = typeof o["new_text"] === "string" ? o["new_text"] : "";
 		return oldText === newText;
 	});
 	if (allNoOps) {
@@ -425,7 +425,7 @@ function preValidateBatchEditFile(app: App, args: Record<string, unknown>): stri
 	const allMissing = operations.every((op) => {
 		if (typeof op !== "object" || op === null) return true;
 		const o = op as Record<string, unknown>;
-		const fp = typeof o.file_path === "string" ? o.file_path : "";
+		const fp = typeof o["file_path"] === "string" ? o["file_path"] : "";
 		if (fp === "") return true;
 		const file = app.vault.getAbstractFileByPath(fp);
 		return file === null || !(file instanceof TFile);
@@ -438,7 +438,7 @@ function preValidateBatchEditFile(app: App, args: Record<string, unknown>): stri
 }
 
 function preValidateBatchDeleteFile(app: App, args: Record<string, unknown>): string | null {
-	const filePaths = parseArrayArg(args.file_paths);
+	const filePaths = parseArrayArg(args["file_paths"]);
 	if (filePaths === null || filePaths.length === 0) {
 		return "Error: file_paths parameter must be a non-empty array of strings.";
 	}
@@ -457,7 +457,7 @@ function preValidateBatchDeleteFile(app: App, args: Record<string, unknown>): st
 }
 
 function preValidateBatchMoveFile(app: App, args: Record<string, unknown>): string | null {
-	const operations = parseArrayArg(args.operations);
+	const operations = parseArrayArg(args["operations"]);
 	if (operations === null || operations.length === 0) {
 		return "Error: operations parameter must be a non-empty array of {file_path, new_path} objects.";
 	}
@@ -466,7 +466,7 @@ function preValidateBatchMoveFile(app: App, args: Record<string, unknown>): stri
 	const allSourcesMissing = operations.every((op) => {
 		if (typeof op !== "object" || op === null) return true;
 		const o = op as Record<string, unknown>;
-		const fp = typeof o.file_path === "string" ? o.file_path : "";
+		const fp = typeof o["file_path"] === "string" ? o["file_path"] : "";
 		if (fp === "") return true;
 		const file = app.vault.getAbstractFileByPath(fp);
 		return file === null || !(file instanceof TFile);
@@ -479,7 +479,7 @@ function preValidateBatchMoveFile(app: App, args: Record<string, unknown>): stri
 	const allDestsExist = operations.every((op) => {
 		if (typeof op !== "object" || op === null) return false;
 		const o = op as Record<string, unknown>;
-		const np = typeof o.new_path === "string" ? o.new_path : "";
+		const np = typeof o["new_path"] === "string" ? o["new_path"] : "";
 		if (np === "") return false;
 		return app.vault.getAbstractFileByPath(np) !== null;
 	});
@@ -491,7 +491,7 @@ function preValidateBatchMoveFile(app: App, args: Record<string, unknown>): stri
 }
 
 function preValidateBatchSetFrontmatter(app: App, args: Record<string, unknown>): string | null {
-	const operations = parseArrayArg(args.operations);
+	const operations = parseArrayArg(args["operations"]);
 	if (operations === null || operations.length === 0) {
 		return "Error: operations parameter must be a non-empty array of {file_path, properties} objects.";
 	}
@@ -499,7 +499,7 @@ function preValidateBatchSetFrontmatter(app: App, args: Record<string, unknown>)
 	const allMissing = operations.every((op) => {
 		if (typeof op !== "object" || op === null) return true;
 		const o = op as Record<string, unknown>;
-		const fp = typeof o.file_path === "string" ? o.file_path : "";
+		const fp = typeof o["file_path"] === "string" ? o["file_path"] : "";
 		if (fp === "") return true;
 		const file = app.vault.getAbstractFileByPath(fp);
 		return file === null || !(file instanceof TFile);
@@ -633,7 +633,7 @@ export async function testConnection(ollamaUrl: string): Promise<string> {
 		});
 
 		if (response.status === 200) {
-			const version = (response.json as Record<string, unknown>).version;
+			const version = (response.json as Record<string, unknown>)["version"];
 			if (typeof version === "string") {
 				return version;
 			}
@@ -666,14 +666,14 @@ export async function listModels(ollamaUrl: string): Promise<string[]> {
 			method: "GET",
 		});
 
-		const models = (response.json as Record<string, unknown>).models;
+		const models = (response.json as Record<string, unknown>)["models"];
 		if (!Array.isArray(models)) {
 			throw new Error("Unexpected response format: missing models array.");
 		}
 
 		return models.map((m: unknown) => {
 			if (typeof m === "object" && m !== null && "name" in m) {
-				const name = (m as Record<string, unknown>).name;
+				const name = (m as Record<string, unknown>)["name"];
 				if (typeof name === "string") {
 					return name;
 				}
@@ -713,7 +713,7 @@ export async function showModel(ollamaUrl: string, model: string): Promise<Model
 		const json = response.json as Record<string, unknown>;
 		let contextLength = 4096; // fallback default
 
-		const modelInfo = json.model_info as Record<string, unknown> | undefined;
+		const modelInfo = json["model_info"] as Record<string, unknown> | undefined;
 		if (modelInfo !== undefined && modelInfo !== null) {
 			for (const key of Object.keys(modelInfo)) {
 				if (key.endsWith(".context_length") || key === "context_length") {
@@ -772,7 +772,7 @@ export async function sendChatMessage(
 		};
 
 		if (tools !== undefined && tools.length > 0) {
-			body.tools = tools;
+			body["tools"] = tools;
 		}
 
 		try {
@@ -783,14 +783,14 @@ export async function sendChatMessage(
 				body: JSON.stringify(body),
 			});
 
-			const messageObj = (response.json as Record<string, unknown>).message;
+			const messageObj = (response.json as Record<string, unknown>)["message"];
 			if (typeof messageObj !== "object" || messageObj === null) {
 				throw new Error("Unexpected response format: missing message.");
 			}
 
 			const msg = messageObj as Record<string, unknown>;
-			const content = typeof msg.content === "string" ? msg.content : "";
-			const toolCalls = parseToolCalls(msg.tool_calls);
+			const content = typeof msg["content"] === "string" ? msg["content"] : "";
+			const toolCalls = parseToolCalls(msg["tool_calls"]);
 
 			return { content, toolCalls };
 		} catch (err: unknown) {
@@ -806,12 +806,12 @@ export async function sendChatMessage(
 
 	return chatAgentLoop({
 		messages: opts.messages,
-		tools,
-		app,
-		userSystemPrompt,
-		vaultContext,
-		onToolCall,
-		onApprovalRequest,
+		...(tools !== undefined ? { tools } : {}),
+		...(app !== undefined ? { app } : {}),
+		...(userSystemPrompt !== undefined ? { userSystemPrompt } : {}),
+		...(vaultContext !== undefined ? { vaultContext } : {}),
+		...(onToolCall !== undefined ? { onToolCall } : {}),
+		...(onApprovalRequest !== undefined ? { onApprovalRequest } : {}),
 		sendRequest,
 	});
 }
@@ -922,12 +922,12 @@ export async function sendChatMessageStreaming(
 
 	return chatAgentLoop({
 		messages: opts.messages,
-		tools,
-		app,
-		userSystemPrompt,
-		vaultContext,
-		onToolCall,
-		onApprovalRequest,
+		...(tools !== undefined ? { tools } : {}),
+		...(app !== undefined ? { app } : {}),
+		...(userSystemPrompt !== undefined ? { userSystemPrompt } : {}),
+		...(vaultContext !== undefined ? { vaultContext } : {}),
+		...(onToolCall !== undefined ? { onToolCall } : {}),
+		...(onApprovalRequest !== undefined ? { onApprovalRequest } : {}),
 		sendRequest,
 	});
 }
@@ -951,7 +951,7 @@ function buildMobileStrategy(
 ): ChatRequestStrategy {
 	return async (workingMessages) => {
 		// Bail out immediately if already aborted
-		if (abortSignal?.aborted === true) {
+		if (abortSignal !== undefined && abortSignal.aborted) {
 			throw new DOMException("The operation was aborted.", "AbortError");
 		}
 
@@ -964,11 +964,11 @@ function buildMobileStrategy(
 		};
 
 		if (tools !== undefined && tools.length > 0) {
-			body.tools = tools;
+			body["tools"] = tools;
 		}
 
 		if (options !== undefined) {
-			body.options = options;
+			body["options"] = options;
 		}
 
 		try {
@@ -998,17 +998,17 @@ function buildMobileStrategy(
 				response = await requestPromise;
 			}
 
-			const messageObj = (response.json as Record<string, unknown>).message;
+			const messageObj = (response.json as Record<string, unknown>)["message"];
 			if (typeof messageObj !== "object" || messageObj === null) {
 				throw new Error("Unexpected response format: missing message.");
 			}
 
 			const msg = messageObj as Record<string, unknown>;
-			const content = typeof msg.content === "string" ? msg.content : "";
-			const toolCalls = parseToolCalls(msg.tool_calls);
+			const content = typeof msg["content"] === "string" ? msg["content"] : "";
+			const toolCalls = parseToolCalls(msg["tool_calls"]);
 
 			// Check abort before delivering content to the UI
-			if (abortSignal?.aborted === true) {
+			if (abortSignal !== undefined && abortSignal.aborted) {
 				throw new DOMException("The operation was aborted.", "AbortError");
 			}
 
@@ -1059,18 +1059,18 @@ function buildDesktopStreamingStrategy(
 		};
 
 		if (tools !== undefined && tools.length > 0) {
-			body.tools = tools;
+			body["tools"] = tools;
 		}
 
 		if (options !== undefined) {
-			body.options = options;
+			body["options"] = options;
 		}
 
 		const response = await fetch(`${ollamaUrl}/api/chat`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
-			signal: abortSignal,
+			signal: abortSignal ?? null,
 		});
 
 		if (!response.ok) {
@@ -1094,21 +1094,21 @@ function buildDesktopStreamingStrategy(
 		try {
 			for await (const chunk of withIdleTimeout(readNdjsonStream(reader, decoder), IDLE_TIMEOUT_MS)) {
 				// Check for mid-stream errors from Ollama
-				if (typeof chunk.error === "string") {
-					throw new Error(`Ollama error: ${chunk.error}`);
+				if (typeof chunk["error"] === "string") {
+					throw new Error(`Ollama error: ${chunk["error"]}`);
 				}
 
-				const rawMsg: unknown = chunk.message;
+				const rawMsg: unknown = chunk["message"];
 				const msg = typeof rawMsg === "object" && rawMsg !== null
 					? rawMsg as Record<string, unknown>
 					: undefined;
 				if (msg !== undefined) {
-					if (typeof msg.content === "string" && msg.content !== "") {
-						content += msg.content;
-						onChunk(msg.content);
+					if (typeof msg["content"] === "string" && msg["content"] !== "") {
+						content += msg["content"];
+						onChunk(msg["content"]);
 					}
-					if (Array.isArray(msg.tool_calls)) {
-						toolCalls.push(...parseToolCalls(msg.tool_calls));
+					if (Array.isArray(msg["tool_calls"])) {
+						toolCalls.push(...parseToolCalls(msg["tool_calls"]));
 					}
 				}
 			}
