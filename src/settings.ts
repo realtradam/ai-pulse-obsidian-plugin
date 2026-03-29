@@ -1,15 +1,5 @@
 import { getDefaultToolStates } from "./tools";
 
-/**
- * A message stored in the persisted chat history.
- * Only user and assistant messages are persisted — system and tool messages
- * are transient (injected per-request by the agent loop).
- */
-export interface PersistedMessage {
-	role: "user" | "assistant";
-	content: string;
-}
-
 export interface AIPulseSettings {
 	ollamaUrl: string;
 	model: string;
@@ -21,7 +11,6 @@ export interface AIPulseSettings {
 	systemPromptFile: string;
 	injectVaultContext: boolean;
 	vaultContextRecentFiles: number;
-	chatHistory: PersistedMessage[];
 }
 
 export const DEFAULT_SETTINGS: AIPulseSettings = {
@@ -35,5 +24,4 @@ export const DEFAULT_SETTINGS: AIPulseSettings = {
 	systemPromptFile: "agent.md",
 	injectVaultContext: false,
 	vaultContextRecentFiles: 20,
-	chatHistory: [],
 };

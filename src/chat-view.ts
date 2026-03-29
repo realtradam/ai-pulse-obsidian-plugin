@@ -7,8 +7,6 @@ import { ToolModal } from "./tool-modal";
 import { TOOL_REGISTRY } from "./tools";
 import type { OllamaToolDefinition } from "./tools";
 import { collectVaultContext, formatVaultContext } from "./vault-context";
-import { toRuntimeMessages, toPersistableMessages } from "./chat-history";
-import type { PersistedMessage } from "./chat-history";
 
 export const VIEW_TYPE_CHAT = "ai-pulse-chat";
 
@@ -21,7 +19,6 @@ export class ChatView extends ItemView {
 	private toolsButton: HTMLButtonElement | null = null;
 	private abortController: AbortController | null = null;
 	private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-	private saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private bubbleContent: Map<HTMLDivElement, string> = new Map();
 	private modelBadge: HTMLDivElement | null = null;
 
@@ -116,9 +113,6 @@ export class ChatView extends ItemView {
 			if (this.messageContainer !== null) {
 				this.messageContainer.empty();
 			}
-			this.plugin.settings.chatHistory = [];
-			this.plugin.updateChatSnapshot([]);
-			void this.plugin.saveSettings();
 			(document.activeElement as HTMLElement)?.blur();
 		});
 
@@ -148,22 +142,12 @@ export class ChatView extends ItemView {
 
 		// Auto-connect on open
 		void this.plugin.connect();
-
-		// Restore persisted chat history
-		void this.restoreChatHistory();
 	}
 
 	async onClose(): Promise<void> {
 		if (this.abortController !== null) {
 			this.abortController.abort();
 		}
-		if (this.saveDebounceTimer !== null) {
-			clearTimeout(this.saveDebounceTimer);
-			this.saveDebounceTimer = null;
-		}
-		// Save any pending history before closing
-		this.plugin.settings.chatHistory = toPersistableMessages(this.messages);
-		void this.plugin.saveSettings();
 		this.contentEl.empty();
 		this.messages = [];
 		this.bubbleContent.clear();
@@ -235,7 +219,6 @@ export class ChatView extends ItemView {
 
 		// Track in message history
 		this.messages.push({ role: "user", content: text });
-		this.saveChatHistoryDebounced();
 
 		// Switch to streaming state
 		this.abortController = new AbortController();
@@ -337,7 +320,6 @@ export class ChatView extends ItemView {
 				await this.finalizeBubble(currentBubble);
 			}
 			this.messages.push({ role: "assistant", content: response });
-			this.saveChatHistoryDebounced();
 			this.scrollToBottom();
 		} catch (err: unknown) {
 			const isAbort = err instanceof DOMException && err.name === "AbortError";
@@ -752,98 +734,6 @@ export class ChatView extends ItemView {
 				text: newText,
 				cls: "ai-pulse-tool-call-result",
 			});
-		}
-	}
-
-	/**
-	 * Save chat history with debouncing to avoid excessive writes.
-	 */
-	private saveChatHistoryDebounced(): void {
-		if (this.saveDebounceTimer !== null) {
-			clearTimeout(this.saveDebounceTimer);
-		}
-		this.saveDebounceTimer = setTimeout(() => {
-			this.saveDebounceTimer = null;
-			const persistable = toPersistableMessages(this.messages);
-			this.plugin.settings.chatHistory = persistable;
-			// Update the plugin's snapshot so the sync checker doesn't treat
-			// our own save as an external change.
-			this.plugin.updateChatSnapshot(persistable);
-			void this.plugin.saveSettings();
-		}, 500);
-	}
-
-	/**
-	 * Restore chat history from the persisted file and render messages.
-	 */
-	private async restoreChatHistory(): Promise<void> {
-		const persisted = this.plugin.settings.chatHistory;
-		if (persisted.length === 0) return;
-
-		this.messages = toRuntimeMessages(persisted);
-		this.plugin.updateChatSnapshot(persisted);
-		await this.renderPersistedMessages(persisted);
-		this.scrollToBottom();
-	}
-
-	/**
-	 * Render persisted messages into the chat container.
-	 * User messages are shown as plain text; assistant messages are rendered as markdown.
-	 */
-	private async renderPersistedMessages(messages: PersistedMessage[]): Promise<void> {
-		if (this.messageContainer === null) return;
-
-		for (const msg of messages) {
-			if (msg.role === "user") {
-				this.messageContainer.createDiv({
-					cls: "ai-pulse-message user",
-					text: msg.content,
-				});
-			} else if (msg.role === "assistant") {
-				const bubble = this.messageContainer.createDiv({
-					cls: "ai-pulse-message assistant ai-pulse-markdown",
-				});
-				await MarkdownRenderer.render(
-					this.plugin.app,
-					msg.content,
-					bubble,
-					"",
-					this,
-				);
-
-				// Wire up internal [[wiki-links]] so they navigate on click
-				bubble.querySelectorAll("a.internal-link").forEach((link) => {
-					link.addEventListener("click", (evt) => {
-						evt.preventDefault();
-						const href = link.getAttribute("href");
-						if (href !== null) {
-							void this.plugin.app.workspace.openLinkText(href, "", false);
-						}
-					});
-				});
-			}
-		}
-	}
-
-	/**
-	 * Reload chat history from disk (e.g., after an external sync).
-	 * Replaces the current messages and re-renders the UI.
-	 */
-	async reloadChatHistory(): Promise<void> {
-		const persisted = this.plugin.settings.chatHistory;
-
-		// Skip reload if we're currently streaming — avoid disrupting the UI
-		if (this.abortController !== null) return;
-
-		this.messages = toRuntimeMessages(persisted);
-		this.bubbleContent.clear();
-		if (this.messageContainer !== null) {
-			this.messageContainer.empty();
-		}
-
-		if (persisted.length > 0) {
-			await this.renderPersistedMessages(persisted);
-			this.scrollToBottom();
 		}
 	}
 
