@@ -7,7 +7,7 @@ import { ToolModal } from "./tool-modal";
 import { TOOL_REGISTRY } from "./tools";
 import type { OllamaToolDefinition } from "./tools";
 import { collectVaultContext, formatVaultContext } from "./vault-context";
-import { loadChatHistory, saveChatHistory, clearChatHistory, toRuntimeMessages, toPersistableMessages } from "./chat-history";
+import { toRuntimeMessages, toPersistableMessages } from "./chat-history";
 import type { PersistedMessage } from "./chat-history";
 
 export const VIEW_TYPE_CHAT = "ai-pulse-chat";
@@ -116,8 +116,9 @@ export class ChatView extends ItemView {
 			if (this.messageContainer !== null) {
 				this.messageContainer.empty();
 			}
-			void clearChatHistory(this.plugin.app, this.plugin.manifest.id);
+			this.plugin.settings.chatHistory = [];
 			this.plugin.updateChatSnapshot([]);
+			void this.plugin.saveSettings();
 			(document.activeElement as HTMLElement)?.blur();
 		});
 
@@ -161,7 +162,8 @@ export class ChatView extends ItemView {
 			this.saveDebounceTimer = null;
 		}
 		// Save any pending history before closing
-		void saveChatHistory(this.plugin.app, this.plugin.manifest.id, this.messages);
+		this.plugin.settings.chatHistory = toPersistableMessages(this.messages);
+		void this.plugin.saveSettings();
 		this.contentEl.empty();
 		this.messages = [];
 		this.bubbleContent.clear();
@@ -762,12 +764,12 @@ export class ChatView extends ItemView {
 		}
 		this.saveDebounceTimer = setTimeout(() => {
 			this.saveDebounceTimer = null;
-			void saveChatHistory(this.plugin.app, this.plugin.manifest.id, this.messages);
+			const persistable = toPersistableMessages(this.messages);
+			this.plugin.settings.chatHistory = persistable;
 			// Update the plugin's snapshot so the sync checker doesn't treat
 			// our own save as an external change.
-			this.plugin.updateChatSnapshot(
-				toPersistableMessages(this.messages),
-			);
+			this.plugin.updateChatSnapshot(persistable);
+			void this.plugin.saveSettings();
 		}, 500);
 	}
 
@@ -775,7 +777,7 @@ export class ChatView extends ItemView {
 	 * Restore chat history from the persisted file and render messages.
 	 */
 	private async restoreChatHistory(): Promise<void> {
-		const persisted = await loadChatHistory(this.plugin.app, this.plugin.manifest.id);
+		const persisted = this.plugin.settings.chatHistory;
 		if (persisted.length === 0) return;
 
 		this.messages = toRuntimeMessages(persisted);
@@ -828,7 +830,7 @@ export class ChatView extends ItemView {
 	 * Replaces the current messages and re-renders the UI.
 	 */
 	async reloadChatHistory(): Promise<void> {
-		const persisted = await loadChatHistory(this.plugin.app, this.plugin.manifest.id);
+		const persisted = this.plugin.settings.chatHistory;
 
 		// Skip reload if we're currently streaming — avoid disrupting the UI
 		if (this.abortController !== null) return;

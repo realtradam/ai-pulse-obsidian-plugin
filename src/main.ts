@@ -4,7 +4,6 @@ import { DEFAULT_SETTINGS } from "./settings";
 import { ChatView, VIEW_TYPE_CHAT } from "./chat-view";
 import { testConnection, listModels } from "./ollama-client";
 import { getDefaultToolStates } from "./tools";
-import { loadChatHistory } from "./chat-history";
 import type { PersistedMessage } from "./chat-history";
 
 export default class AIPulse extends Plugin {
@@ -39,7 +38,11 @@ export default class AIPulse extends Plugin {
 		// We check when the app regains visibility (user switches back from another app/device).
 		this.registerDomEvent(document, "visibilitychange", () => {
 			if (document.visibilityState === "visible") {
-				void this.checkChatHistorySync();
+				// Reload settings from disk in case Obsidian Sync updated data.json
+				// while the app was in the background.
+				void this.loadSettings().then(() => {
+					this.checkChatHistorySync();
+				});
 			}
 		});
 	}
@@ -87,20 +90,20 @@ export default class AIPulse extends Plugin {
 
 	/**
 	 * Called by Obsidian when data.json is modified externally (e.g., via Sync).
-	 * This is a strong signal that other plugin files may also have been synced.
+	 * Reloads settings (which now include chat history) and syncs the chat view.
 	 */
 	async onExternalSettingsChange(): Promise<void> {
 		await this.loadSettings();
-		void this.checkChatHistorySync();
+		this.checkChatHistorySync();
 	}
 
 	/**
 	 * Check if the persisted chat history has changed (e.g., from another device)
 	 * and reload the chat view if needed.
 	 */
-	async checkChatHistorySync(): Promise<void> {
+	checkChatHistorySync(): void {
 		try {
-			const persisted = await loadChatHistory(this.app, this.manifest.id);
+			const persisted = this.settings.chatHistory;
 			const snapshot = buildChatSnapshot(persisted);
 
 			if (snapshot === this.lastChatSnapshot) return;
