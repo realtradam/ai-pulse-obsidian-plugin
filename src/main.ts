@@ -4,6 +4,8 @@ import { DEFAULT_SETTINGS } from "./settings";
 import { ChatView, VIEW_TYPE_CHAT } from "./chat-view";
 import { testConnection, listModels } from "./ollama-client";
 import { getDefaultToolStates } from "./tools";
+import { loadChatHistory } from "./chat-history";
+import type { PersistedMessage } from "./chat-history";
 
 export default class AIPulse extends Plugin {
 	settings: AIPulseSettings = DEFAULT_SETTINGS;
@@ -12,6 +14,9 @@ export default class AIPulse extends Plugin {
 	connectionStatus: "disconnected" | "connecting" | "connected" | "error" = "disconnected";
 	connectionMessage = "";
 	availableModels: string[] = [];
+
+	// Snapshot of persisted chat history for sync change detection
+	private lastChatSnapshot = "";
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -28,6 +33,14 @@ export default class AIPulse extends Plugin {
 			callback: () => {
 				void this.activateView();
 			},
+		});
+
+		// Detect chat history changes from Obsidian Sync or other devices.
+		// We check when the app regains visibility (user switches back from another app/device).
+		this.registerDomEvent(document, "visibilitychange", () => {
+			if (document.visibilityState === "visible") {
+				void this.checkChatHistorySync();
+			}
 		});
 	}
 
@@ -72,6 +85,47 @@ export default class AIPulse extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	/**
+	 * Called by Obsidian when data.json is modified externally (e.g., via Sync).
+	 * This is a strong signal that other plugin files may also have been synced.
+	 */
+	async onExternalSettingsChange(): Promise<void> {
+		await this.loadSettings();
+		void this.checkChatHistorySync();
+	}
+
+	/**
+	 * Check if the persisted chat history has changed (e.g., from another device)
+	 * and reload the chat view if needed.
+	 */
+	async checkChatHistorySync(): Promise<void> {
+		try {
+			const persisted = await loadChatHistory(this.app, this.manifest.id);
+			const snapshot = buildChatSnapshot(persisted);
+
+			if (snapshot === this.lastChatSnapshot) return;
+			this.lastChatSnapshot = snapshot;
+
+			// Find the active chat view and reload it
+			const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT);
+			for (const leaf of leaves) {
+				const view = leaf.view;
+				if (view instanceof ChatView) {
+					void view.reloadChatHistory();
+				}
+			}
+		} catch {
+			// Silently ignore — sync check is best-effort
+		}
+	}
+
+	/**
+	 * Update the snapshot after a local save so we don't trigger a false reload.
+	 */
+	updateChatSnapshot(messages: PersistedMessage[]): void {
+		this.lastChatSnapshot = buildChatSnapshot(messages);
+	}
+
 	async connect(): Promise<void> {
 		this.connectionStatus = "connecting";
 		this.connectionMessage = "Connecting...";
@@ -98,4 +152,16 @@ export default class AIPulse extends Plugin {
 			this.connectionStatus = "error";
 		}
 	}
+}
+
+/**
+ * Build a lightweight snapshot string of chat messages for change detection.
+ * Uses message count + last message content hash to detect changes
+ * without deep comparison.
+ */
+function buildChatSnapshot(messages: PersistedMessage[]): string {
+	if (messages.length === 0) return "empty";
+	const last = messages[messages.length - 1];
+	if (last === undefined) return "empty";
+	return `${messages.length}:${last.role}:${last.content.length}:${last.content.slice(0, 100)}`;
 }
