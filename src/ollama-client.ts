@@ -2,6 +2,7 @@ import { Platform, requestUrl, TFile } from "obsidian";
 import type { App } from "obsidian";
 import type { OllamaToolDefinition } from "./tools";
 import { findToolByName } from "./tools";
+import { hasCurrentAttachments } from "./image-attachments";
 import systemPromptData from "./context/system-prompt.json";
 import markdownRulesData from "./context/obsidian-markdown-rules.json";
 
@@ -293,6 +294,8 @@ function preValidateTool(
 			return preValidateBatchMoveFile(app, args);
 		case "batch_set_frontmatter":
 			return preValidateBatchSetFrontmatter(app, args);
+		case "save_image":
+			return preValidateSaveImage(args);
 		default:
 			return null;
 	}
@@ -396,6 +399,19 @@ function preValidateSetFrontmatter(app: App, args: Record<string, unknown>): str
 	const file = app.vault.getAbstractFileByPath(filePath);
 	if (file === null || !(file instanceof TFile)) {
 		return `Error: File not found at path "${filePath}".`;
+	}
+
+	return null;
+}
+
+function preValidateSaveImage(args: Record<string, unknown>): string | null {
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	if (!hasCurrentAttachments()) {
+		return "Error: No images are attached to the current message. The user must attach images before you can save them.";
 	}
 
 	return null;

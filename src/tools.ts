@@ -17,6 +17,8 @@ import batchDeleteFileCtx from "./context/tools/batch-delete-file.json";
 import batchMoveFileCtx from "./context/tools/batch-move-file.json";
 import batchSetFrontmatterCtx from "./context/tools/batch-set-frontmatter.json";
 import batchEditFileCtx from "./context/tools/batch-edit-file.json";
+import saveImageCtx from "./context/tools/save-image.json";
+import { getCurrentAttachments, clearCurrentAttachments } from "./image-attachments";
 
 /**
  * Schema for an Ollama tool definition (function calling).
@@ -459,6 +461,91 @@ async function executeSetFrontmatter(app: App, args: Record<string, unknown>): P
 }
 
 // ---------------------------------------------------------------------------
+// Save image tool
+// ---------------------------------------------------------------------------
+
+/**
+ * Map MIME types to file extensions.
+ */
+function mimeToExtension(mimeType: string): string {
+	const map: Record<string, string> = {
+		"image/jpeg": ".jpg",
+		"image/png": ".png",
+		"image/gif": ".gif",
+		"image/webp": ".webp",
+		"image/bmp": ".bmp",
+		"image/svg+xml": ".svg",
+	};
+	return map[mimeType] ?? ".png";
+}
+
+/**
+ * Execute the "save_image" tool.
+ * Saves attached image(s) to the vault at the specified path.
+ */
+async function executeSaveImage(app: App, args: Record<string, unknown>): Promise<string> {
+	const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
+	if (filePath === "") {
+		return "Error: file_path parameter is required.";
+	}
+
+	const attachments = getCurrentAttachments();
+	if (attachments.length === 0) {
+		return "Error: No images are attached to the current message.";
+	}
+
+	const savedPaths: string[] = [];
+	const errors: string[] = [];
+
+	for (let i = 0; i < attachments.length; i++) {
+		const attachment = attachments[i];
+		if (attachment === undefined) continue;
+
+		const ext = mimeToExtension(attachment.mimeType);
+		const fullPath = attachments.length === 1
+			? `${filePath}${ext}`
+			: `${filePath}_${i + 1}${ext}`;
+
+		// Check if file already exists
+		const existing = app.vault.getAbstractFileByPath(fullPath);
+		if (existing !== null) {
+			errors.push(`"${fullPath}" already exists — skipped.`);
+			continue;
+		}
+
+		// Ensure parent folder exists
+		const lastSlash = fullPath.lastIndexOf("/");
+		if (lastSlash > 0) {
+			const folderPath = fullPath.substring(0, lastSlash);
+			const folder = app.vault.getFolderByPath(folderPath);
+			if (folder === null) {
+				await app.vault.createFolder(folderPath);
+			}
+		}
+
+		try {
+			await app.vault.createBinary(fullPath, attachment.arrayBuffer);
+			savedPaths.push(fullPath);
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Unknown error";
+			errors.push(`"${fullPath}": ${msg}`);
+		}
+	}
+
+	clearCurrentAttachments();
+
+	const parts: string[] = [];
+	if (savedPaths.length > 0) {
+		parts.push(`Saved ${savedPaths.length} image(s):\n${savedPaths.map(p => `- ${p}`).join("\n")}`);
+	}
+	if (errors.length > 0) {
+		parts.push(`Errors:\n${errors.map(e => `- ${e}`).join("\n")}`);
+	}
+
+	return parts.join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
 // Batch tool execute functions
 // ---------------------------------------------------------------------------
 
@@ -857,6 +944,27 @@ export const TOOL_REGISTRY: ToolEntry[] = [
 			return "Frontmatter updated";
 		},
 		execute: executeSetFrontmatter,
+	},
+	{
+		...asToolContext(saveImageCtx as Record<string, unknown>),
+		approvalMessage: (args) => {
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "unknown";
+			const count = getCurrentAttachments().length;
+			return `Save ${count} image(s) to "${filePath}"?`;
+		},
+		summarize: (args) => {
+			const filePath = typeof args["file_path"] === "string" ? args["file_path"] : "";
+			const count = getCurrentAttachments().length;
+			return `${count} image(s) \u2192 "/${filePath}"`;
+		},
+		summarizeResult: (result) => {
+			if (result.startsWith("Error")) return result;
+			if (result.includes("declined")) return "Declined by user";
+			const match = result.match(/Saved (\d+) image/);
+			if (match !== null) return `${match[1]} image(s) saved`;
+			return "Images saved";
+		},
+		execute: executeSaveImage,
 	},
 	// --- Batch tools ---
 	{

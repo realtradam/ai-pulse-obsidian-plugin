@@ -7,8 +7,16 @@ import { ToolModal } from "./tool-modal";
 import { TOOL_REGISTRY } from "./tools";
 import type { OllamaToolDefinition } from "./tools";
 import { collectVaultContext, formatVaultContext } from "./vault-context";
+import { setCurrentAttachments, clearCurrentAttachments } from "./image-attachments";
+import type { ImageAttachment } from "./image-attachments";
 
 export const VIEW_TYPE_CHAT = "ai-pulse-chat";
+
+interface PendingAttachment {
+	file: File;
+	dataUrl: string;
+	mimeType: string;
+}
 
 export class ChatView extends ItemView {
 	private plugin: AIPulse;
@@ -21,6 +29,10 @@ export class ChatView extends ItemView {
 	private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private bubbleContent: Map<HTMLDivElement, string> = new Map();
 	private modelBadge: HTMLDivElement | null = null;
+	private pendingAttachments: PendingAttachment[] = [];
+	private attachmentStrip: HTMLDivElement | null = null;
+	private attachButton: HTMLButtonElement | null = null;
+	private fileInput: HTMLInputElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: AIPulse) {
 		super(leaf);
@@ -94,6 +106,7 @@ export class ChatView extends ItemView {
 			const modal = new ToolModal(this.plugin);
 			modal.onClose = () => {
 				this.updateToolsButtonState();
+				this.updateAttachButtonVisibility();
 			};
 			modal.open();
 			(document.activeElement as HTMLElement)?.blur();
@@ -110,6 +123,9 @@ export class ChatView extends ItemView {
 		clearBtn.addEventListener("click", () => {
 			this.messages = [];
 			this.bubbleContent.clear();
+			this.pendingAttachments = [];
+			clearCurrentAttachments();
+			this.renderAttachmentStrip();
 			if (this.messageContainer !== null) {
 				this.messageContainer.empty();
 			}
@@ -117,6 +133,39 @@ export class ChatView extends ItemView {
 		});
 
 		const inputRow = messagesArea.createDiv({ cls: "ai-pulse-input-row" });
+
+		// --- Attachment preview strip (above input controls) ---
+		this.attachmentStrip = inputRow.createDiv({ cls: "ai-pulse-attachment-strip" });
+		this.attachmentStrip.style.display = "none";
+
+		// --- Attach button (left of textarea) ---
+		this.attachButton = inputRow.createEl("button", {
+			cls: "ai-pulse-attach-btn",
+			attr: { "aria-label": "Attach image" },
+		});
+		setIcon(this.attachButton, "image-plus");
+		this.updateAttachButtonVisibility();
+
+		// Hidden file input
+		this.fileInput = inputRow.createEl("input", {
+			type: "file",
+			attr: {
+				accept: "image/jpeg,image/png,image/gif,image/webp,image/bmp,image/svg+xml",
+				multiple: "",
+				style: "display:none",
+			},
+		});
+
+		this.attachButton.addEventListener("click", () => {
+			this.fileInput?.click();
+		});
+
+		this.fileInput.addEventListener("change", () => {
+			if (this.fileInput === null || this.fileInput.files === null) return;
+			void this.handleFileSelection(this.fileInput.files);
+			this.fileInput.value = ""; // Reset so same file can be re-selected
+		});
+
 		this.textarea = inputRow.createEl("textarea", {
 			attr: { placeholder: "Type a message...", rows: "2" },
 		});
@@ -151,12 +200,17 @@ export class ChatView extends ItemView {
 		this.contentEl.empty();
 		this.messages = [];
 		this.bubbleContent.clear();
+		this.pendingAttachments = [];
+		clearCurrentAttachments();
 		this.messageContainer = null;
 		this.textarea = null;
 		this.sendButton = null;
 		this.toolsButton = null;
 		this.modelBadge = null;
 		this.abortController = null;
+		this.attachmentStrip = null;
+		this.attachButton = null;
+		this.fileInput = null;
 	}
 
 	private getEnabledTools(): OllamaToolDefinition[] {
@@ -185,6 +239,12 @@ export class ChatView extends ItemView {
 		this.toolsButton.toggleClass("ai-pulse-tools-active", this.hasAnyToolEnabled());
 	}
 
+	private updateAttachButtonVisibility(): void {
+		if (this.attachButton === null) return;
+		const visible = this.plugin.settings.enabledTools["save_image"] === true;
+		this.attachButton.style.display = visible ? "" : "none";
+	}
+
 	private updateModelBadge(): void {
 		if (this.modelBadge === null) return;
 		const model = this.plugin.settings.model;
@@ -203,7 +263,7 @@ export class ChatView extends ItemView {
 		}
 
 		const text = this.textarea.value.trim();
-		if (text === "") {
+		if (text === "" && this.pendingAttachments.length === 0) {
 			return;
 		}
 
@@ -212,13 +272,44 @@ export class ChatView extends ItemView {
 			return;
 		}
 
-		// Append user message
+		// Convert pending attachments to ImageAttachment format for the tool
+		let messageContent = text;
+		if (this.pendingAttachments.length > 0) {
+			const imageAttachments: ImageAttachment[] = [];
+			for (const pa of this.pendingAttachments) {
+				const arrayBuffer = await pa.file.arrayBuffer();
+				const bytes = new Uint8Array(arrayBuffer);
+				let binary = "";
+				for (const b of bytes) binary += String.fromCharCode(b);
+				const base64 = btoa(binary);
+
+				imageAttachments.push({
+					base64,
+					mimeType: pa.mimeType,
+					originalName: pa.file.name,
+					arrayBuffer,
+				});
+			}
+
+			// Set the module-level attachments for the save_image tool to access
+			setCurrentAttachments(imageAttachments);
+
+			// Prepend context note to the message for the LLM
+			const count = this.pendingAttachments.length;
+			messageContent = `[${count} image(s) are attached to this message. You MUST use the save_image tool to save them to the vault. Infer from the user's message how and where these images should be saved and embedded. Assume the user wants the images attached to whatever note they are asking you to create or edit.]\n\n${text}`;
+
+			// Clear the UI attachments
+			this.pendingAttachments = [];
+			this.renderAttachmentStrip();
+		}
+
+		// Append user message (show original text in UI)
 		this.appendMessage("user", text);
 		this.textarea.value = "";
 		this.scrollToBottom();
 
-		// Track in message history
-		this.messages.push({ role: "user", content: text });
+		// Track the augmented message in history for the LLM
+		this.messages.push({ role: "user", content: messageContent });
 
 		// Switch to streaming state
 		this.abortController = new AbortController();
@@ -323,6 +414,9 @@ export class ChatView extends ItemView {
 			this.scrollToBottom();
 		} catch (err: unknown) {
 			const isAbort = err instanceof DOMException && err.name === "AbortError";
+
+			// Clear stale attachments on error
+			clearCurrentAttachments();
 
 			// Clean up the streaming bubble
 			// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
@@ -737,6 +831,71 @@ export class ChatView extends ItemView {
 		}
 	}
 
+	private async handleFileSelection(files: FileList): Promise<void> {
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+			if (file === undefined) continue;
+			if (!file.type.startsWith("image/")) continue;
+
+			const dataUrl = await this.readFileAsDataUrl(file);
+			this.pendingAttachments.push({
+				file,
+				dataUrl,
+				mimeType: file.type,
+			});
+		}
+		this.renderAttachmentStrip();
+	}
+
+	private readFileAsDataUrl(file: File): Promise<string> {
+		return new Promise<string>((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => {
+				if (typeof reader.result === "string") {
+					resolve(reader.result);
+				} else {
+					reject(new Error("Failed to read file as data URL."));
+				}
+			};
+			reader.onerror = () => reject(new Error("File read error."));
+			reader.readAsDataURL(file);
+		});
+	}
+
+	private renderAttachmentStrip(): void {
+		if (this.attachmentStrip === null) return;
+		this.attachmentStrip.empty();
+
+		if (this.pendingAttachments.length === 0) {
+			this.attachmentStrip.style.display = "none";
+			return;
+		}
+
+		this.attachmentStrip.style.display = "flex";
+
+		for (let i = 0; i < this.pendingAttachments.length; i++) {
+			const attachment = this.pendingAttachments[i];
+			if (attachment === undefined) continue;
+
+			const thumb = this.attachmentStrip.createDiv({ cls: "ai-pulse-attachment-thumb" });
+			thumb.createEl("img", {
+				attr: { src: attachment.dataUrl, alt: attachment.file.name },
+			});
+
+			const removeBtn = thumb.createEl("button", {
+				cls: "ai-pulse-attachment-remove",
+				attr: { "aria-label": "Remove" },
+			});
+			setIcon(removeBtn, "x");
+
+			const index = i;
+			removeBtn.addEventListener("click", () => {
+				this.pendingAttachments.splice(index, 1);
+				this.renderAttachmentStrip();
+			});
+		}
+	}
+
 	private scrollToBottom(): void {
 		if (this.messageContainer === null) return;
 		const lastChild = this.messageContainer.lastElementChild;
@@ -768,6 +927,9 @@ export class ChatView extends ItemView {
 		if (this.sendButton !== null) {
 			this.sendButton.textContent = streaming ? "Stop" : "Send";
 			this.sendButton.toggleClass("ai-pulse-stop-btn", streaming);
+		}
+		if (this.attachButton !== null) {
+			this.attachButton.disabled = streaming;
 		}
 	}
 }

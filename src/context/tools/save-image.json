@@ -1,0 +1,26 @@
+{
+	"id": "save_image",
+	"label": "Save Image",
+	"description": "Save attached image(s) to the vault at a specified path.",
+	"friendlyName": "Save Image",
+	"requiresApproval": true,
+	"definition": {
+		"type": "function",
+		"function": {
+			"name": "save_image",
+			"description": "Save image(s) attached to the current chat message into the vault. The user has attached image(s) to their message — this tool writes them as files. You provide the vault-relative path WITHOUT the file extension (the correct extension is detected automatically from the image type). If multiple images are attached and you provide a single path, they will be saved as path_1.ext, path_2.ext, etc. If no images are attached, this tool returns an error. This action requires user approval.",
+			"parameters": {
+				"type": "object",
+				"required": [
+					"file_path"
+				],
+				"properties": {
+					"file_path": {
+						"type": "string",
+						"description": "The vault-relative path for the image WITHOUT the file extension. The extension is added automatically based on the image type (e.g., .jpg, .png). Example: 'attachments/cool-keyboard' will become 'attachments/cool-keyboard.jpg'. For multiple images with a single path, they are numbered: 'attachments/cool-keyboard_1.jpg', 'attachments/cool-keyboard_2.jpg', etc."
+					}
+				}
+			}
+		}
+	}
+}
